@@ -333,7 +333,7 @@ BUFFER defaults to the current buffer."
 (defvar-local jsonf-edit-return-var nil
   "Information necessary to jump back from `jsonf-edit-mode'.")
 
-(defun json-edit-string ()
+(defun jsonf-edit-string ()
   "Edit the string at point in another buffer."
   (interactive)
   (let ((cbuffer (current-buffer))
