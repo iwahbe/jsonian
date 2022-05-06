@@ -318,8 +318,11 @@ POS defaults to `point'. BUFFER defaults to `current-buffer'. PROPERTY defaults 
            (next-single-property-change pos property)))))))
 
 (cl-defstruct jsonf--edit-return
-  "Information necessary to return from `jsonf-edit-mode'."
-  match back-buffer overlay)
+  "Information necessary to return from `jsonf--edit-mode'."
+  match          ;; The (start . end) region of text being operated on
+  back-buffer    ;; The buffer to return back to
+  overlay        ;; The overlay used to highlight `match' text
+  delete-window) ;; If the hosting `window' should be deleted upon exit.
 
 (defun jsonf--replace-text-in (start end text &optional buffer)
   "Set the content of the region (START to END) to TEXT in BUFFER.
@@ -331,7 +334,7 @@ BUFFER defaults to the current buffer."
       (insert text))))
 
 (defvar-local jsonf-edit-return-var nil
-  "Information necessary to jump back from `jsonf-edit-mode'.")
+  "Information necessary to jump back from `jsonf--edit-mode'.")
 
 (defun jsonf-edit-string ()
   "Edit the string at point in another buffer."
@@ -353,7 +356,15 @@ BUFFER defaults to the current buffer."
                                                   :match match
                                                   :back-buffer cbuffer
                                                   :overlay overlay)))
-        (select-window (display-buffer buffer #'display-buffer-use-least-recent-window))
+        (let ((windows (length (window-list-1))))
+          ;; We observe the number of existing windows
+          (select-window (display-buffer buffer #'display-buffer-use-least-recent-window))
+          ;; Then we display the new buffer
+          (when (length> (window-list-1) windows)
+            ;; If we have added a new window, we note to delete that window when
+            ;; when we kill the display buffer
+            (with-current-buffer buffer
+              (setf (jsonf--edit-return-delete-window jsonf-edit-return-var) t))))
         (jsonf--edit-mode +1)))))
 
 (defun jsonf--intern-special-chars (buffer)
@@ -386,7 +397,7 @@ This means replacing '\\n' with '\n' and '\\t' with '\t'."
       (while (search-forward "\\\"" nil t)
         (replace-match "\"")))))
 
-(defun jsonf--edit-mode-return ()
+(defun jsonf-edit-mode-return ()
   "Jump back from `json-edit-string', actualizing the change made."
   (interactive)
   (jsonf--edit-mode-ensure)
@@ -394,17 +405,22 @@ This means replacing '\\n' with '\n' and '\\t' with '\t'."
   (let ((text (buffer-substring-no-properties (point-min) (point-max)))
         (back-buffer (jsonf--edit-return-back-buffer jsonf-edit-return-var))
         (back-match (jsonf--edit-return-match jsonf-edit-return-var)))
-    (jsonf--edit-mode-cancel)
+    (jsonf-edit-mode-cancel)
     (jsonf--replace-text-in (car back-match) (cdr back-match) text back-buffer)))
 
-(defun jsonf--edit-mode-cancel ()
+(defun jsonf-edit-mode-cancel ()
   "Jump back from `json-edit-string' without making a change."
   (interactive)
   (jsonf--edit-mode-ensure)
   (let ((back-buffer (jsonf--edit-return-back-buffer jsonf-edit-return-var))
-        (overlay (jsonf--edit-return-overlay jsonf-edit-return-var)))
+        (overlay (jsonf--edit-return-overlay jsonf-edit-return-var))
+        (kill-window (jsonf--edit-return-delete-window jsonf-edit-return-var)))
     (delete-overlay overlay)
-    (kill-current-buffer)
+
+    ;; Kill the display buffer
+    (if kill-window
+      (kill-buffer-and-window)
+      (kill-current-buffer))
     (select-window (get-buffer-window back-buffer))
     (read-only-mode -1)))
 
@@ -415,8 +431,8 @@ It should *not* be toggled manually."
   :global nil
   :lighter "edit-string"
   :keymap (list
-           (cons (kbd "C-c C-c") #'jsonf--edit-mode-return)
-           (cons (kbd "C-c C-k") #'jsonf--edit-mode-cancel)))
+           (cons (kbd "C-c C-c") #'jsonf-edit-mode-return)
+           (cons (kbd "C-c C-k") #'jsonf-edit-mode-cancel)))
 
 (defun jsonf--edit-mode-ensure ()
   "Throw an error if edit-string-at-point-mode is not setup correctly."
