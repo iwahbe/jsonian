@@ -1,9 +1,9 @@
 EMACS = emacs
 
-build: json-fixer.elc
+build: jsonf.elc
 
-test: build json-fixer-tests.elc
-	$(EMACS) -Q --batch -l ert -L . -l json-fixer-tests.elc -f ert-run-tests-batch-and-exit
+test: build jsonf-tests.elc
+	$(EMACS) -Q --batch -l ert -L . -l jsonf-tests -l jsonf-tests.elc -l jsonf.elc -f ert-run-tests-batch-and-exit
 
 clean:
 	rm *.elc

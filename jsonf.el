@@ -1,4 +1,4 @@
-;;; json-fixer.el --- Local editing of JSON files -*- lexical-binding: t; -*-
+;;; jsonf.el --- Local editing of JSON files -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2022 Ian Wahbe
 
@@ -429,4 +429,4 @@ It should *not* be toggled manually."
 
 (provide 'jsonf)
 
-;;; json-fixer.el ends here
+;;; jsonf.el ends here

@@ -1,10 +1,10 @@
-;;; json-fixer-tests.el --- Tests for json-fixer.el -*- lexical-bindings: t; -*-
+;;; jsonf-tests.el --- Tests for jsonf.el -*- lexical-bindings: t; -*-
 
 ;; Copyright (C) 2022 Ian Wahbe
 
 ;;; Commentary:
 
-;; Tests for json-fixer.el
+;; Tests for jsonf.el
 
 ;;; Code:
 
@@ -17,4 +17,4 @@
            (jsonf--display-path '("foo" "bar" 3 2 "buzz")))))
 
 (provide 'jsonf-tests)
-;;; json-fixer-tests.el ends here
+;;; jsonf-tests.el ends here
