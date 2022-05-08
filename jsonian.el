@@ -45,7 +45,7 @@ b. leveraging C code whenever possible."
   (with-current-buffer (or buffer (current-buffer))
     (save-excursion
       (goto-char (or pos (point)))
-      (jsonian--correct-starting-path)
+      (jsonian--correct-starting-point)
       (let ((result (jsonian--reconstruct-path (jsonian--path t nil))) display)
         (when (called-interactively-p 'interactive)
           (setq display (jsonian--display-path result))
@@ -54,8 +54,14 @@ b. leveraging C code whenever possible."
         result))))
 
 (defmacro jsonian--defun-traverse (name &optional arg)
-  "Define a jsonian--backward-NAME (NAME) and jsonian--forward-NAME functions with predicate condition ARG.
-If NAME is a string literal, generate a function to parse the literal NAME."
+  "Define a functions to traverse literals or predicate defined range.
+Generated functions are `jsonian--forward-NAME' and
+`jsonian--backward-NAME'. If NAME is a string literal, generate a
+function to parse the literal NAME. It is illegal to supply ARG
+if NAME is a string literal. If NAME is a symbol generated
+functions determine that a character `c' is part of the parse
+group by calling ARG on `c'. If NAME is a symbol, it is illegal
+not to supply ARG."
   (declare (indent defun))
   (if (stringp name)
       (progn
@@ -67,10 +73,10 @@ If NAME is a string literal, generate a function to parse the literal NAME."
              (if (and (> (- (point) ,(length name)) (point-min))
                       ,@(let ((i 0) l)
                           (while (< i (length name))
-                            (setq l (cons (list '= (list 'char-after (list '- '(point) (- (length name) i))) (aref name i)) l)
+                            (setq l (cons (list '= (list 'char-after (list '- '(point) (- (length name) i 1))) (aref name i)) l)
                                   i (1+ i)))
                           l))
-                 (backward-char ,(1+ (length name)))
+                 (backward-char ,(length name))
                (user-error ,(format "Expected \"%s\", found %s" name "%s\"%s\"")
                            (if (< (- (point) ,(length name)) (point-min))
                                "(BOB) " "")
@@ -148,17 +154,18 @@ is manually parsed."
   "Scan backwards from `point' looking for the beginning of a string.
 `jsonian--string-scan-back' will not move between lines. A non-nil
 result is returned if a string beginning was found."
-  (let (done)
-    (while (not (or done (bolp)))
+  (let (done exit)
+    (while (not (or done exit))
+      (when (bolp) (setq exit t))
       ;; Backtrack through the string until an unescaped " is found.
       (if (not (= (char-after) ?\"))
-          (backward-char)
+          (when (not (bobp)) (backward-char))
         (let (escaped (anchor (point)))
-          (while (= (char-before) ?\\)
+          (while (and (char-before) (= (char-before) ?\\))
             (backward-char)
             (setq escaped (not escaped)))
           (if escaped
-              (backward-char)
+              (when (not (bobp)) (backward-char))
             (goto-char (1- anchor))
             (setq done t)))))
     done))
@@ -193,11 +200,12 @@ backwards to ensure that the end of a string is not escaped."
 `beginning-of-line'. When non-nil, the starting position of the
 discovered string is returned."
   (save-excursion
-    (let (in-string start)
-      (while (jsonian--string-scan-back)
+    (let (in-string start done)
+      (while (and (jsonian--string-scan-back) (not done))
         (when (not start)
           (setq start (1+ (point))))
-        (setq in-string (not in-string)))
+        (setq in-string (not in-string))
+        (setq done (bobp)))
       (when in-string start))))
 
 (defun jsonian--pos-in-keyp (&optional at-beginning)
@@ -263,13 +271,10 @@ Otherwise nil is returned. POS defaults to `ponit'."
       (t (error "Unknown path element %s" path))))
    path ""))
 
-(defun jsonian--correct-starting-path ()
+(defun jsonian--correct-starting-point ()
   "Move point to a valid place to start searching for a path.
 It is illegal to start searching for a path inside a string or a tag."
-  ;;
   (let (match)
-    (when (and (<= (point) (point-min)) (= (char-after) ?,))
-      (backward-char))
     ;; Move before string values
     (when (setq match (or
                        (jsonian--get-font-lock-region (point) nil 'face jsonian-string-face)
@@ -279,7 +284,12 @@ It is illegal to start searching for a path inside a string or a tag."
     (when (setq match (or
                        (jsonian--get-font-lock-region (point) nil 'face jsonian-key-face)
                        (let ((e (jsonian--pos-in-keyp))) (when e (cons nil e)))))
-      (goto-char (1+ (cdr match))))))
+      (goto-char (cdr match))))
+  ;; Move before boolean literals
+  (while (and (char-after) (>= (char-after) ?a) (<= (char-after) ?z))
+    (forward-char))
+  (when (and (char-before) (= (char-after) ?,) (= (char-before) ?\ ))
+      (backward-char)))
 
 (defun jsonian--path (allow-tags stop-at-valid)
   "Helper function for `jsonian-path'.
@@ -357,17 +367,10 @@ Otherwise it will parse back to the beginning of the file."
                (jsonian--backward-number))
               ;; Boolean literal: true
               ((and (= (char-after) ?e)
-                    (= (char-before) ?u)
-                    (equal (char-before (1- (point))) ?r)
-                    (equal (char-before (- (point) 2)) ?t))
-               (backward-char 4))
+                    (= (char-before) ?u))
+               (jsonian--backward-true))
               ;; Boolean literal: false
-              ((and (= (char-after ?e))
-                    (= (char-before) ?s)
-                    (equal (char-before (1- (point))) ?l)
-                    (equal (char-before (- (point) 2)) ?a)
-                    (equal (char-before (- (point) 3)) ?f))
-               (backward-char 5))
+              ((= (char-after) ?e) (jsonian--backward-false))
               (t  (user-error "Unexpected character '%c'" (char-after)))))))
 
 (defun jsonian--get-string-region (type &optional pos buffer)
@@ -559,7 +562,7 @@ JSON font lock syntactic face function."
 
 (defun jsonian--enclosing-object-or-array ()
   "Go to the enclosing object/array of `point'."
-  (jsonian--correct-starting-path)
+  (jsonian--correct-starting-point)
   (unless (bobp) (backward-char))
   (let ((result (car-safe (jsonian--path nil t))))
     (when (or (numberp result)
@@ -583,20 +586,35 @@ JSON font lock syntactic face function."
 
 (defun jsonian--traverse-forward (&optional n)
   "Go forward N elements in a list or array."
-  (when (< n 0) (error "N must be positive"))
-  (setq n (or n 1))
-  (jsonian--correct-starting-path)
-  (while (> n 0)
-    (jsonian--forward-whitespace)
-    (cond
-     ((= (char-after) ?\") (jsonian--forward-string 'font-lock-string-face))
-     ((= (char-after) ?:)
-      (forward-char)
+  (let ((n (or n 1))
+        (start (point))
+        done)
+    (when (< n 0) (error "N must be positive"))
+    (jsonian--correct-starting-point)
+    (while (and (> n 0) (not done))
       (jsonian--forward-whitespace)
-      (jsonian--forward-string 'font-lock-keyword-face))
-     ((= (char-after) ?t))
-     (t (user-error "Unexpected character '%c'" (char-after)))
-     )))
+      (cond
+       ((= (char-after) ?\") (jsonian--forward-string 'font-lock-string-face))
+       ((= (char-after) ?:)
+        (forward-char)
+        (jsonian--forward-whitespace)
+        (jsonian--forward-string 'font-lock-keyword-face))
+       ((= (char-after) ?t) (jsonian--forward-true))
+       ((= (char-after) ?f) (jsonian--forward-false))
+       ((= (char-after) ?\{) (forward-list))
+       ((= (char-after) ?\[) (forward-list))
+       ((and (>= (char-after) ?0) (<= (char-after) ?9))
+        (forward-char))
+       ((= (char-after) ?,) (setq n (1- n))
+        (forward-char))
+       ((or (= (char-after) ?\])
+            (= (char-after) ?\}))
+        (setq done t))
+       (t (user-error "Unexpected character '%c'" (char-after)))))
+    (jsonian--forward-whitespace)
+    (if (= n 0)
+        t
+      (goto-char start) nil)))
 
 (defun jsonian-beginning-of-defun (&optional arg)
   "Move to the beginning of the smallest object/array enclosing `POS'.
@@ -605,7 +623,7 @@ The jsonian-mode value of `beginning-of-defun-function' (see
 times. Negative ARG means move forward to the ARGth following
 beginning of defun."
   (setq arg (or arg 1))
-  (jsonian--correct-starting-path)
+  (jsonian--correct-starting-point)
   (jsonian--path nil t)
   nil)
 

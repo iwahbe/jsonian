@@ -1,0 +1,7 @@
+{
+  "foo": {
+    "bar": 3
+  },
+  "fizz": [true, 2, "3", false, { "some": "object" }],
+  "thing1": "thing2"
+}
