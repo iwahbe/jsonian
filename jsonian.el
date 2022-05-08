@@ -624,8 +624,35 @@ times. Negative ARG means move forward to the ARGth following
 beginning of defun."
   (setq arg (or arg 1))
   (jsonian--correct-starting-point)
-  (jsonian--path nil t)
+  (jsonian--enclosing-object-or-array)
   nil)
+
+(defun jsonian-narrow-to-defun (&optional arg)
+  "Narrows to region for `jsonian-mode'. ARG is ignored."
+  (let (start end)
+    (save-excursion
+      (jsonian--correct-starting-point)
+      (setq end (point))
+      (when (jsonian--enclosing-item)
+        (setq start (point)))
+      (goto-char end)
+      (when (jsonian--enclosing-object-or-array)
+        (forward-list)
+        (setq end (point))))
+    (when (and start end)
+      (narrow-to-region start end))))
+
+(defun jsonian--correct-narrow-to-defun (&optional arg)
+  "Correct `narrow-to-defun' for `jsonian-mode' via the advice system.
+ARG is passed onto `jsonian-narrow-to-defun'. This function is
+designed to be installed with `advice-add' and `:before-until'."
+  (interactive)
+  (let ((correct (eq major-mode 'jsonian-mode)))
+    (when correct
+      (jsonian-narrow-to-defun arg))
+    correct))
+
+(advice-add 'narrow-to-defun :before-until #'jsonian--correct-narrow-to-defun)
 
 (defvar jsonian-mode-map (make-sparse-keymap))
 (define-key jsonian-mode-map (kbd "C-c C-p") #'jsonian-path)
