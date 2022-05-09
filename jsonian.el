@@ -16,6 +16,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'json)
 
 (defvar jsonian-string-face 'font-lock-string-face
   "The face by which `jsonian' can identify JSON string values.")
@@ -27,6 +28,9 @@
   "Always ignore symbol `font-lock-mode'.
 If non-nil, `jsonian-string-face' and `jsonian-key-face' are
 ignored.")
+
+(defvar jsonian-spaces-per-indentation 4
+  "The number of spaces each increase in indentation level indicates.")
 
 (defun jsonian-path (&optional pos buffer)
   "Return the JSON path (as a list) of POINT in BUFFER.
@@ -629,6 +633,9 @@ beginning of defun."
 
 (defun jsonian-narrow-to-defun (&optional arg)
   "Narrows to region for `jsonian-mode'. ARG is ignored."
+  ;; Arg is present to comply with the function signature of `narrow-to-defun'.
+  ;; Its value is ignored.
+  (setq arg (or arg))
   (let (start end)
     (save-excursion
       (jsonian--correct-starting-point)
@@ -654,6 +661,41 @@ designed to be installed with `advice-add' and `:before-until'."
 
 (advice-add 'narrow-to-defun :before-until #'jsonian--correct-narrow-to-defun)
 
+(defun jsonian--get-indent-level ()
+  "Find the level of indentation of the current line by examining the previous line."
+  (if (= (line-number-at-pos) 1)
+      0
+    (let ((level 0))
+      (save-excursion ;; The previous line - end
+        (end-of-line 0) ;;Roll backward to the end of the previous line
+        (while (and (char-before) (or (= (char-before) ?\ ) ;; Then find the first non-whitespace character
+                                      (= (char-before) ?\t)))
+          (backward-char))
+        (when (or (= (char-before) ?\{)
+                  (= (char-before) ?\[))
+          ;; If it is a opening \{ or \[, the next line should be indented by 1 unit
+          (cl-incf level jsonian-spaces-per-indentation))
+        (beginning-of-line)
+        (while (and (char-after) (or (= (char-after) ?\ )
+                                     (= (char-after) ?\t)))
+          (forward-char))
+        (cl-incf level (current-column)))
+      (save-excursion
+        (beginning-of-line)
+        (while (and (char-after) (or (= (char-after) ?\ )
+                                     (= (char-after) ?\t)))
+          (forward-char))
+        (when (or (= (char-after) ?\})
+                  (= (char-after) ?\]))
+          (cl-decf level jsonian-spaces-per-indentation)))
+      level)))
+
+(defun jsonian-indent-line ()
+  "Indent a single line.
+The indent is based on the preceding line."
+  (interactive)
+  (indent-line-to (jsonian--get-indent-level)))
+
 (defvar jsonian-mode-map (make-sparse-keymap))
 (define-key jsonian-mode-map (kbd "C-c C-p") #'jsonian-path)
 (define-key jsonian-mode-map (kbd "C-c C-s") #'jsonian-edit-string)
@@ -661,6 +703,8 @@ designed to be installed with `advice-add' and `:before-until'."
 (define-derived-mode jsonian-mode prog-mode "JSON"
   "Major mode for editing JSON files."
   :syntax-table jsonian-syntax-table
+  (set (make-local-variable 'indent-line-function)
+       #'jsonian-indent-line)
   (set (make-local-variable 'beginning-of-defun-function)
        #'jsonian-beginning-of-defun)
   (set (make-local-variable 'font-lock-defaults)

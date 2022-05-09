@@ -131,8 +131,17 @@
     (jsonian--traverse-forward 3)
     (should-point 64)
     (should-not (jsonian--traverse-forward))
-    (should-point 64)
-    ))
+    (should-point 64)))
+
+(ert-deftest jsonian-indent-leave-alone ()
+  "Load `indent1' and indent each line.
+We test that all lines are unchanged"
+  (with-file-and-point "indent1" (point-min)
+    (let ((jsonian-spaces-per-indentation 4)
+          (file-contents (buffer-string)))
+      (dotimes (l (count-lines (point-min) (point-max)))
+        (jsonian-indent-line))
+      (should (string= (buffer-string) file-contents)))))
 
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here
