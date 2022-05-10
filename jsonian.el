@@ -622,13 +622,19 @@ JSON font lock syntactic face function."
 
 (defun jsonian-beginning-of-defun (&optional arg)
   "Move to the beginning of the smallest object/array enclosing `POS'.
-The jsonian-mode value of `beginning-of-defun-function' (see
-`beginning-of-defun' for details). With ARG, do it that many
-times. Negative ARG means move forward to the ARGth following
-beginning of defun."
+ARG is currently ignored."
+  (setq arg (or arg 1)) ;; TODO use ARG correctly
+  (jsonian--correct-starting-point)
+  (jsonian--enclosing-object-or-array)
+  nil)
+
+(defun jsonian-end-of-defun (&optional arg)
+  "Move to the end of the smallest object/array enclosing `POS'.
+ARG is currently ignored."
   (setq arg (or arg 1))
   (jsonian--correct-starting-point)
   (jsonian--enclosing-object-or-array)
+  (forward-list)
   nil)
 
 (defun jsonian-narrow-to-defun (&optional arg)
@@ -700,13 +706,19 @@ The indent is based on the preceding line."
 (define-key jsonian-mode-map (kbd "C-c C-p") #'jsonian-path)
 (define-key jsonian-mode-map (kbd "C-c C-s") #'jsonian-edit-string)
 
+(add-to-list 'hs-special-modes-alist '(jsonian-mode "{" "}" "/[*/]" nil))
+
 (define-derived-mode jsonian-mode prog-mode "JSON"
   "Major mode for editing JSON files."
   :syntax-table jsonian-syntax-table
+  (set (make-local-variable 'comment-start) "")
+  (set (make-local-variable 'comment-end) "")
   (set (make-local-variable 'indent-line-function)
        #'jsonian-indent-line)
   (set (make-local-variable 'beginning-of-defun-function)
        #'jsonian-beginning-of-defun)
+  (set (make-local-variable 'end-of-defun-function)
+       #'jsonian-end-of-defun)
   (set (make-local-variable 'font-lock-defaults)
        '(json-font-lock-keywords-1
          nil nil nil nil
