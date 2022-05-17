@@ -40,7 +40,7 @@ valid from POS to `point-min'.
 
 For example
     { \"foo\": [ { \"bar\": █ }, { \"fizz\": \"buzz\" } ] }
-with pos at █ should yield '(\"foo\" 0 \"bar\")
+with pos at █ should yield \"[foo][0][bar]\".
 
 `jsonian-path' is optimized to work on very large json files (35 MiB+).
 This optimization is achieved by
@@ -58,70 +58,91 @@ b. leveraging C code whenever possible."
           (kill-new display))
         result))))
 
-(defmacro jsonian--defun-traverse (name &optional arg)
+
+(defmacro jsonian--defun-predicate-traversal (name arg-list predicate)
+  "Define `jsonian--forward-NAME' and `jsonian--backward-NAME'.
+NAME is an unquoted symbol. ARG-LIST defines a single variable
+name which will be bound to the value of the character to
+examine. PREDICATE is the function body to call. A non-nil value
+determines that the argument is in the category NAME."
+  (declare (indent defun))
+  `(progn
+     (defun ,(intern (format "jsonian--backward-%s" name)) ()
+       (let ((,@arg-list))
+         (while (and (not (bobp)) (setq ,(car arg-list) (char-after)) ,predicate)
+           (backward-char))))
+     (defun ,(intern (format "jsonian--forward-%s" name)) ()
+       (let ((,@arg-list))
+         (while (and (not (eobp)) (setq ,(car arg-list) (char-after)) ,predicate)
+           (if (eolp) (forward-line) (forward-char)))))))
+
+(defmacro jsonian--defun-literal-traversal (literal)
+  "Define `jsonian--forward-LITERAL' and `jsonian--backward-LITERAL'.
+LITERAL is the string literal to be traversed."
+  (declare (indent defun))
+  `(progn
+     (defun ,(intern (format "jsonian--backward-%s" literal)) ()
+       ,(format "Move backward over the literal \"%s\"" literal)
+       (if (and (> (- (point) ,(length literal)) (point-min))
+                ,@(let ((i 0) l)
+                    (while (< i (length literal))
+                      (setq l (cons (list '= (list 'char-after (list '- '(point) (- (length literal) i 1))) (aref literal i)) l)
+                            i (1+ i)))
+                    l))
+           (backward-char ,(length literal))
+         (user-error ,(format "Expected \"%s\", found %s" literal "%s\"%s\"")
+                     (if (< (- (point) ,(length literal)) (point-min))
+                         "(BOB) " "")
+                     (buffer-substring-no-properties (max (point-min) (- (point) ,(length literal))) (point)))))
+     (defun ,(intern (format "jsonian--forward-%s" literal)) ()
+       ,(format "Move forward over the literal \"%s\"" literal) ;
+       (if (and (< (+ (point) ,(length literal)) (point-max))
+                ,@(let ((i 0) l)
+                    (while (< i (length literal))
+                      (setq l (cons (list '= (list 'char-after (list '+ '(point) i)) (aref literal i)) l)
+                            i (1+ i)))
+                    l))
+           (dotimes (_ ,(length literal))
+             (if (eolp) (forward-line) (forward-char)))
+         (user-error ,(format "Expected \"%s\", found %s" literal "\"%s\"%s")
+                     (buffer-substring-no-properties (point) (min (+ (point) ,(length literal)) (point-max)))
+                     (if (>= (+ (point) ,(length literal)) (point-max))
+                         " (EOF)"
+                       ""))))))
+
+
+
+(defmacro jsonian--defun-traverse (name &optional arg arg2)
   "Define a functions to traverse literals or predicate defined range.
 Generated functions are `jsonian--forward-NAME' and
 `jsonian--backward-NAME'. If NAME is a string literal, generate a
 function to parse the literal NAME. It is illegal to supply ARG
-if NAME is a string literal. If NAME is a symbol generated
-functions determine that a character `c' is part of the parse
-group by calling ARG on `c'. If NAME is a symbol, it is illegal
-not to supply ARG."
+or ARG2 if NAME is a string literal. If NAME is a symbol
+generated functions determine that a character (car ARG) is part
+of the parse group by calling ARG with (car ARG) bound to a
+character. If NAME is a symbol, it is illegal not to supply ARG
+and ARG2."
   (declare (indent defun))
   (if (stringp name)
       (progn
         (when arg
           (error "Unnecessary argument ARG"))
-        `(progn
-           (defun ,(intern (format "jsonian--backward-%s" name)) ()
-             ,(format "Move backward over the literal \"%s\"" name)
-             (if (and (> (- (point) ,(length name)) (point-min))
-                      ,@(let ((i 0) l)
-                          (while (< i (length name))
-                            (setq l (cons (list '= (list 'char-after (list '- '(point) (- (length name) i 1))) (aref name i)) l)
-                                  i (1+ i)))
-                          l))
-                 (backward-char ,(length name))
-               (user-error ,(format "Expected \"%s\", found %s" name "%s\"%s\"")
-                           (if (< (- (point) ,(length name)) (point-min))
-                               "(BOB) " "")
-                           (buffer-substring-no-properties (max (point-min) (- (point) ,(length name))) (point)))))
-           (defun ,(intern (format "jsonian--forward-%s" name)) ()
-             ,(format "Move forward over the literal \"%s\"" name) ;
-             (if (and (< (+ (point) ,(length name)) (point-max))
-                      ,@(let ((i 0) l)
-                          (while (< i (length name))
-                            (setq l (cons (list '= (list 'char-after (list '+ '(point) i)) (aref name i)) l)
-                                  i (1+ i)))
-                          l))
-                 (dotimes (_ ,(length name))
-                   (if (eolp) (forward-line) (forward-char)))
-               (user-error ,(format "Expected \"%s\", found %s" name "\"%s\"%s")
-                           (buffer-substring-no-properties (point) (min (+ (point) ,(length name)) (point-max)))
-                           (if (>= (+ (point) ,(length name)) (point-max))
-                               " (EOF)"
-                             ""))))))
+        `(jsonian--defun-literal-traversal ,name))
     (unless arg (error "Missing ARG"))
-    `(progn
-       (defun ,(intern (format "jsonian--backward-%s" name)) ()
-         (while (and (not (bobp)) ,arg)
-           (backward-char)))
-       (defun ,(intern (format "jsonian--forward-%s" name)) ()
-         (while (and (not (eobp)) ,arg)
-           (if (eolp) (forward-line) (forward-char)))))))
+    `(jsonian--defun-predicate-traversal ,name ,arg ,arg2)))
 
 (jsonian--defun-traverse "true")
 (jsonian--defun-traverse "false")
 
-(jsonian--defun-traverse whitespace
-  (or (= (char-after) ?\ )
-      (= (char-after) ?\t)
-      (= (char-after) ?\n)
-      (= (char-after) ?\r)))
+(jsonian--defun-traverse whitespace (x)
+  (or (= x ?\ )
+      (= x ?\t)
+      (= x ?\n)
+      (= x ?\r)))
 
-(jsonian--defun-traverse number
-  (and (<= (char-after) ?9)
-       (>= (char-after) ?0)))
+(jsonian--defun-traverse number (x)
+  (and (<= x ?9)
+       (>= x ?0)))
 
 (defun jsonian--backward-string (&optional expected-face)
   "Move back a string, starting at the ending \".
