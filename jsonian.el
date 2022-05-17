@@ -17,6 +17,7 @@
 
 (require 'cl-lib)
 (require 'json)
+(require 'seq)
 
 (defvar jsonian-string-face 'font-lock-string-face
   "The face by which `jsonian' can identify JSON string values.")
@@ -708,6 +709,13 @@ The indent is based on the preceding line."
 
 (add-to-list 'hs-special-modes-alist '(jsonian-mode "{" "}" "/[*/]" nil))
 
+(add-to-list 'magic-fallback-mode-alist '("^[{[]$" . jsonian-mode))
+(add-to-list 'auto-mode-alist '("\\.json\\'" . jsonian-mode))
+
+(defvar jsonian--font-lock-keywords
+  (list (cons (regexp-opt '("true" "false")) 'font-lock-constant-face))
+  "Keywords in JSON (true|false).")
+
 (define-derived-mode jsonian-mode prog-mode "JSON"
   "Major mode for editing JSON files."
   :syntax-table jsonian-syntax-table
@@ -720,9 +728,24 @@ The indent is based on the preceding line."
   (set (make-local-variable 'end-of-defun-function)
        #'jsonian-end-of-defun)
   (set (make-local-variable 'font-lock-defaults)
-       '(json-font-lock-keywords-1
+       '(jsonian--font-lock-keywords
          nil nil nil nil
          (font-lock-syntactic-face-function . jsonian--syntactic-face))))
+
+;;;###autoload
+(defun jsonian-enable-flycheck ()
+  "Enable `jsonian-mode' for all checkers where `json-mode' is enabled."
+  (interactive)
+  (unless (boundp 'flycheck-checkers)
+    (error "Flycheck needs to be loaded"))
+  (defvar flycheck-checkers)
+  (declare-function flycheck-checker-get "flycheck")
+  (declare-function flycheck-add-mode "flycheck")
+  (let ((checkers flycheck-checkers))
+    (while checkers
+      (when (seq-some (apply-partially #'eq 'json-mode) (flycheck-checker-get (car checkers) 'modes))
+        (flycheck-add-mode (car checkers) 'jsonian-mode))
+      (setq checkers (cdr checkers)))))
 
 (provide 'jsonian)
 

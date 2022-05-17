@@ -10,7 +10,7 @@ clean:
 	@# We do this so removed files are listed
 	@if compgen -G "*.elc" > /dev/null; then \
 	  for f in *.elc; do                     \
-		echo "rm $$f" && rm $$f;             \
+    echo "rm $$f" && rm $$f;               \
 	  done                                   \
     fi
 
