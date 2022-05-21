@@ -49,7 +49,7 @@ b. leveraging C code whenever possible."
   (interactive)
   (with-current-buffer (or buffer (current-buffer))
     (save-excursion
-      (goto-char (or pos (point)))
+      (when pos (goto-char pos))
       (jsonian--correct-starting-point)
       (let ((result (jsonian--reconstruct-path (jsonian--path t nil))) display)
         (when (called-interactively-p 'interactive)
@@ -69,7 +69,7 @@ determines that the argument is in the category NAME."
   `(progn
      (defun ,(intern (format "jsonian--backward-%s" name)) ()
        (let ((,@arg-list))
-         (while (and (not (bobp)) (setq ,(car arg-list) (char-after)) ,predicate)
+         (while (and (not (bobp)) (setq ,(car arg-list) (char-before)) ,predicate)
            (backward-char))))
      (defun ,(intern (format "jsonian--forward-%s" name)) ()
        (let ((,@arg-list))
@@ -86,11 +86,11 @@ LITERAL is the string literal to be traversed."
        (if (and (> (- (point) ,(length literal)) (point-min))
                 ,@(let ((i 0) l)
                     (while (< i (length literal))
-                      (setq l (cons (list '= (list 'char-after (list '- '(point) (- (length literal) i 1))) (aref literal i)) l)
+                      (setq l (cons (list 'eq (list 'char-before (list '- '(point) (- (length literal) i 1))) (aref literal i)) l)
                             i (1+ i)))
                     l))
            (backward-char ,(length literal))
-         (user-error ,(format "Expected \"%s\", found %s" literal "%s\"%s\"")
+         (user-error ,(format "jsonian--backward-%s: expected \"%s\", found %s" literal literal "%s\"%s\"")
                      (if (< (- (point) ,(length literal)) (point-min))
                          "(BOB) " "")
                      (buffer-substring-no-properties (max (point-min) (- (point) ,(length literal))) (point)))))
@@ -104,13 +104,11 @@ LITERAL is the string literal to be traversed."
                     l))
            (dotimes (_ ,(length literal))
              (if (eolp) (forward-line) (forward-char)))
-         (user-error ,(format "Expected \"%s\", found %s" literal "\"%s\"%s")
+         (user-error ,(format "jsonian--forward-%s: expected \"%s\", found %s" literal literal "\"%s\"%s")
                      (buffer-substring-no-properties (point) (min (+ (point) ,(length literal)) (point-max)))
                      (if (>= (+ (point) ,(length literal)) (point-max))
                          " (EOF)"
                        ""))))))
-
-
 
 (defmacro jsonian--defun-traverse (name &optional arg arg2)
   "Define a functions to traverse literals or predicate defined range.
@@ -149,8 +147,8 @@ and ARG2."
 If the string is highlighted with the `face' EXPECTED-FACE, then
 use the face to define the scope of the region. If the string
 does not have face EXPECTED-FACE, the string is manually parsed."
-  (unless (= (char-after) ?\")
-    (error "Expected to be at \""))
+  (unless (eq (char-before) ?\")
+    (error "backward-string: Expected to start at \""))
   (let ((match (and expected-face (jsonian--get-font-lock-region nil nil 'face expected-face))))
     (if match
         ;; The region is highlighted, so just jump to the beginning of that.
@@ -159,7 +157,7 @@ does not have face EXPECTED-FACE, the string is manually parsed."
       (setq match (point))
       (backward-char)
       (jsonian--string-scan-back)
-      (cons (1+ (point)) (1+ match)))))
+      (cons (point) match))))
 
 (defun jsonian--forward-string (&optional expected-face)
   "Move forward a string, starting at the beginning \".
@@ -167,7 +165,7 @@ If the string is highlighted with the `face' EXPECTED-FACE, use
 the face to define the scope of the string. Otherwise the string
 is manually parsed."
   (unless (= (char-after) ?\")
-    (error "Expected to start at \""))
+    (error "forward-string: Expected to start at \""))
   (let ((match (and expected-face (jsonian--get-font-lock-region nil nil 'face expected-face))))
     (if match
         (progn (goto-char (cdr match)) match)
@@ -184,10 +182,10 @@ result is returned if a string beginning was found."
     (while (not (or done exit))
       (when (bolp) (setq exit t))
       ;; Backtrack through the string until an unescaped " is found.
-      (if (not (= (char-after) ?\"))
+      (if (not (eq (char-before) ?\"))
           (when (not (bobp)) (backward-char))
         (let (escaped (anchor (point)))
-          (while (and (char-before) (= (char-before) ?\\))
+          (while (eq (char-before (1- (point))) ?\\)
             (backward-char)
             (setq escaped (not escaped)))
           (if escaped
@@ -222,14 +220,14 @@ backwards to ensure that the end of a string is not escaped."
 
 (defun jsonian--pos-in-stringp ()
   "Determine if `point' is in a string (either a key or a value).
-`=-pos-in-string' will only examine between `point' and
+`jsonian--pos-in-string' will only examine between `point' and
 `beginning-of-line'. When non-nil, the starting position of the
 discovered string is returned."
   (save-excursion
     (let (in-string start done)
       (while (and (jsonian--string-scan-back) (not done))
         (when (not start)
-          (setq start (1+ (point))))
+          (setq start (point)))
         (setq in-string (not in-string))
         (setq done (bobp)))
       (when in-string start))))
@@ -282,8 +280,7 @@ Otherwise nil is returned. POS defaults to `ponit'."
                 (setq seen-key nil))
                (t
                 (setq seen-key nil
-                      path (cons element path)))
-               ))
+                      path (cons element path)))))
             input)
     path))
 
@@ -305,17 +302,19 @@ It is illegal to start searching for a path inside a string or a tag."
     (when (setq match (or
                        (jsonian--get-font-lock-region (point) nil 'face jsonian-string-face)
                        (let ((s (jsonian--pos-in-valuep))) (when s (cons s nil)))))
-      (goto-char (1- (car match))))
+      (goto-char (car match)))
     ;; Move after string tags
     (when (setq match (or
                        (jsonian--get-font-lock-region (point) nil 'face jsonian-key-face)
                        (let ((e (jsonian--pos-in-keyp))) (when e (cons nil e)))))
       (goto-char (cdr match))))
-  ;; Move before boolean literals
-  (while (and (char-after) (>= (char-after) ?a) (<= (char-after) ?z))
-    (forward-char))
-  (when (and (char-before) (= (char-after) ?,) (= (char-before) ?\ ))
-      (backward-char)))
+  ;; Move before literals
+  (while (and (char-before) (>= (char-before) ?a) (<= (char-before) ?z))
+    (backward-char))
+  ;; Move after : to be sure we see it. Not doing this leads to confusing keys
+  ;; and string values when scanning backwards
+  (when (eq (char-after) ?:)
+    (forward-char)))
 
 (defun jsonian--path (allow-tags stop-at-valid)
   "Helper function for `jsonian-path'.
@@ -332,23 +331,22 @@ Otherwise it will parse back to the beginning of the file."
              (jsonian--backward-whitespace)
              (cond
               ;; Enclosing object
-              ((= (char-after) ?\{)
+              ((eq (char-before) ?\{)
                (cl-return (cons 'object
-                                (unless (or (bobp) stop-at-valid)
+                                (unless stop-at-valid
                                   (backward-char)
                                   (jsonian--path t stop-at-valid)))))
               ;; Enclosing array
-              ((= (char-after) ?\[)
+              ((eq (char-before) ?\[)
                (cl-return (cons index
-                                (unless (or (bobp) stop-at-valid)
+                                (unless stop-at-valid
                                   (backward-char)
                                   (jsonian--path t stop-at-valid)))))
               ;; Skipping over a complete node (either a array or a object)
               ((or
-                (= (char-after) ?\])
-                (= (char-after) ?\}))
-               (when (and (eolp) (not (bolp)))
-                 (backward-char))
+                (eq (char-before) ?\])
+                (eq (char-before) ?\}))
+               (backward-char)
                (setq close (1- (scan-lists (point) 1 1)))
                (when (< close (line-end-position))
                  (goto-char (1+ close))
@@ -356,19 +354,16 @@ Otherwise it will parse back to the beginning of the file."
                (backward-char))
 
               ;; In a list or object
-              ((= (char-after) ?,)
-               (when (bobp)
-                 (user-error "Before ',' expected something, found beginning of buffer"))
+              ((eq (char-before) ?,)
                (backward-char)
                (setq index (1+ index)))
+
               ;; Object tag
-              ((= (char-after) ?:)
-               (when (bobp)
-                 (user-error "Before ':' expected '\"', found beginning of buffer"))
+              ((eq (char-before) ?:)
                (backward-char)
                (jsonian--backward-whitespace)
-               (unless (= (char-after) ?\")
-                 (user-error "Before ':' expected '\"', found '%c'" (char-after)))
+               (unless (eq (char-before) ?\")
+                 (user-error "Before ':' expected '\"', found '%s'" (if (bobp) "BOB" (char-before))))
                (let* ((tag-region (jsonian--backward-string jsonian-key-face))
                       (tag-text (when tag-region
                                   (buffer-substring-no-properties (1+ (car tag-region)) (1- (cdr tag-region))))))
@@ -382,22 +377,23 @@ Otherwise it will parse back to the beginning of the file."
                    ;; (and recurse on them) when we need to.
                    (cl-return (cons tag-text (jsonian--path nil stop-at-valid))))))
               ;; Found a string value, ignore
-              ((= (char-after) ?\")
+              ((eq (char-before) ?\")
                (jsonian--backward-string jsonian-string-face))
 
               ;; NOTE: I'm making a choice to parse non-string literals instead of ignoring
               ;; other characters. This ensures the partial parse is strict.
 
               ;; Found a number value, ignore
-              ((and (<= (char-after) ?9) (>= (char-after) ?0))
+              ((and (char-before) (<= (char-before) ?9) (>= (char-before) ?0))
                (jsonian--backward-number))
               ;; Boolean literal: true
-              ((and (= (char-after) ?e)
-                    (= (char-before) ?u))
+              ((and (eq (char-before) ?e)
+                    (eq (char-before (1- (point))) ?u))
                (jsonian--backward-true))
               ;; Boolean literal: false
-              ((= (char-after) ?e) (jsonian--backward-false))
-              (t  (user-error "Unexpected character '%c'" (char-after)))))))
+              ((eq (char-before) ?e) (jsonian--backward-false))
+              ((bobp) (cl-return nil))
+              (t  (user-error "Unexpected character '%s'" (if (bobp) "BOB" (format "%c" (char-before)))))))))
 
 (defun jsonian--get-string-region (type &optional pos buffer)
   "Find the bounds of the string at POS in BUFFER.
@@ -417,8 +413,9 @@ Valid options for TYPE are `jsonian-string-face' and `jsonian-key-face'."
 
 (defun jsonian--get-font-lock-region (&optional pos buffer property property-value)
   "Find the bounds of the font-locked region surrounding POS in BUFFER.
-If PROPERTY-VALUE is set, the returned region has that value.
-POS defaults to `point'. BUFFER defaults to `current-buffer'. PROPERTY defaults to `face'."
+If PROPERTY-VALUE is set, the returned region has that value. POS
+defaults to `point'. BUFFER defaults to `current-buffer'.
+PROPERTY defaults to `face'."
   (when (not jsonian-ignore-font-lock)
     (let ((pos (or pos (point)))
           (property (or property 'face))
@@ -589,10 +586,10 @@ JSON font lock syntactic face function."
 (defun jsonian--enclosing-object-or-array ()
   "Go to the enclosing object/array of `point'."
   (jsonian--correct-starting-point)
-  (unless (bobp) (backward-char))
   (let ((result (car-safe (jsonian--path nil t))))
     (when (or (numberp result)
               (equal result 'object))
+      (unless (bobp) (backward-char))
       result)))
 
 (defun jsonian--enclosing-item ()
@@ -690,17 +687,17 @@ designed to be installed with `advice-add' and `:before-until'."
 (advice-add 'narrow-to-defun :before-until #'jsonian--correct-narrow-to-defun)
 
 (defun jsonian--get-indent-level ()
-  "Find the level of indentation of the current line by examining the previous line."
+  "Find the indentation level of the current line by examining the previous line."
   (if (= (line-number-at-pos) 1)
       0
     (let ((level 0))
       (save-excursion ;; The previous line - end
         (end-of-line 0) ;;Roll backward to the end of the previous line
-        (while (and (char-before) (or (= (char-before) ?\ ) ;; Then find the first non-whitespace character
-                                      (= (char-before) ?\t)))
+        (while  (or (eq (char-before) ?\ ) ;; Then find the first non-whitespace character
+                    (eq (char-before) ?\t))
           (backward-char))
-        (when (or (= (char-before) ?\{)
-                  (= (char-before) ?\[))
+        (when (or (eq (char-before) ?\{)
+                  (eq (char-before) ?\[))
           ;; If it is a opening \{ or \[, the next line should be indented by 1 unit
           (cl-incf level jsonian-spaces-per-indentation))
         (beginning-of-line)
