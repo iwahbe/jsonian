@@ -718,7 +718,9 @@ designed to be installed with `advice-add' and `:before-until'."
 
 (defun jsonian-indent-line ()
   "Indent a single line.
-The indent is based on the preceding line."
+The indent is determined by examining the previous line. The
+number of spaces is determined by
+`jsonian-spaces-per-indentation'."
   (interactive)
   (indent-line-to (jsonian--get-indent-level)))
 
