@@ -1,4 +1,4 @@
-;;; jsonian.el --- Local editing of JSON files -*- lexical-binding: t; -*-
+;;; jsonian.el --- A major mode for editing JSON files -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2022 Ian Wahbe
 
