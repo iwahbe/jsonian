@@ -462,13 +462,14 @@ BUFFER defaults to the current buffer."
         (with-current-buffer buffer
           (insert text)
           (jsonian--unintern-special-chars (current-buffer))
+          (goto-char (point-min))
           (setq-local jsonian-edit-return-var (make-jsonian--edit-return
                                                   :match match
                                                   :back-buffer cbuffer
                                                   :overlay overlay)))
         (let ((windows (length (window-list-1))))
           ;; We observe the number of existing windows
-          (select-window (display-buffer buffer #'display-buffer-use-least-recent-window))
+          (select-window (display-buffer buffer #'display-buffer-pop-up-window))
           ;; Then we display the new buffer
           (when (length> (window-list-1) windows)
             ;; If we have added a new window, we note to delete that window when
