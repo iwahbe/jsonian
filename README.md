@@ -51,17 +51,13 @@ lines) and as such we need to remove `prog-mode` from the
 Initialize the local package with use-package making it work with `so-long`
 ```emacs-lisp
 ;; In ~/.emacs.d/init-jsonian-mode.el
-;;; Code:
-
 (use-package jsonian
   :load-path "~/src/jsonian"
   :ensure nil
   :after so-long
-  :config
-  (setq so-long-target-modes (remove 'prog-mode so-long-target-modes))
+  :custom
+  (so-long-target-modes (remove 'prog-mode so-long-target-modes))
   )
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; init-jsonian-mode.el ends here
 ```
 
 #### Vanilla emacs 27+ wrapped in init package
@@ -78,17 +74,17 @@ Requires that `~/.emacs.d/site-elisp` (or whichever directory the
 package is in) exist and be in the load path
 
 ```emacs-lisp
-;;; Code:```emacs-lisp
 ;; In ~/.emacs.d/site-elisp/init-jsonian-mode.el
 ;;; Code:
-
 (use-package jsonian
   :load-path "~/src/jsonian"
   :ensure nil
   :after so-long
-  :config
-  (setq so-long-target-modes (remove 'prog-mode so-long-target-modes))
+  :custom
+  (so-long-target-modes (remove 'prog-mode so-long-target-modes))
   )
+
+(provide 'init-jsonian-mode)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; init-jsonian-mode.el ends here
 ```
