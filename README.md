@@ -15,22 +15,67 @@ large files, please file an issue.
 `jsonian.el` is a single file package, and can be compiled with `make build`. Just move
 the compiled `jsonian.elc` onto your load path.
 
-### Vanilla emacs, using use-package
+#### Vanilla emacs 27+
 
-Clone the repo
+Clone the repository
 ```bash
 mkdir ~/src
 cd ~/src/
 git clone git@github.com:iwahbe/jsonian.git
 ```
 
-Initialize the local package with use-package
+#### Vanilla emacs 27+ raw
+
+Emacs 27+ includes `so-long` mode which is derived from `prog-mode`;
+`so-long` mode will supplant `jsonian-mode` if the file has any long
+lines) and as such we need to remove `prog-mode` from the
+`so-long-target-modes` list if we want `jsonian-mode` to take over.
+
+Initialize the local package with use-package making it work with `so-long`
 ```emacs-lisp
+;; In ~/.emacs.d/init-jsonian-mode.el
+;;; Code:
+
 (use-package jsonian
   :load-path "~/src/jsonian"
   :ensure nil
+  :after so-long
+  :config
+  (setq so-long-target-modes (remove 'prog-mode so-long-target-modes))
   )
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; init-jsonian-mode.el ends here
 ```
+
+#### Vanilla emacs 27+ wrapped in init package
+
+Initialize the local package with use-package making it work with
+`so-long`, and also wrap it in an initialization package
+
+```emacs-lisp
+;; In ~/.emacs.d/init.el
+(require 'init-jsonian-mode)
+```
+
+Requires that `~/.emacs.d/site-elisp` (or whichever directory the
+package is in) exist and be in the load path
+
+```emacs-lisp
+;;; Code:```emacs-lisp
+;; In ~/.emacs.d/site-elisp/init-jsonian-mode.el
+;;; Code:
+
+(use-package jsonian
+  :load-path "~/src/jsonian"
+  :ensure nil
+  :after so-long
+  :config
+  (setq so-long-target-modes (remove 'prog-mode so-long-target-modes))
+  )
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; init-jsonian-mode.el ends here
+```
+
 
 ### Doom Emacs
 
