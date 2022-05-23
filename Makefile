@@ -1,5 +1,5 @@
 EMACS = emacs
-SHELL := /bin/bash
+SHELL = BASH
 
 build: jsonian.elc
 
