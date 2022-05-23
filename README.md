@@ -15,6 +15,23 @@ large files, please file an issue.
 `jsonian.el` is a single file package, and can be compiled with `make build`. Just move
 the compiled `jsonian.elc` onto your load path.
 
+### Vanilla emacs, using use-package
+
+Clone the repo
+```bash
+mkdir ~/src
+cd ~/src/
+git clone git@github.com:iwahbe/jsonian.git
+```
+
+Initialize the local package with use-package
+```emacs-lisp
+(use-package jsonian
+  :load-path "~/src/jsonian"
+  :ensure nil
+  )
+```
+
 ### Doom Emacs
 
 If you are using [Doom Emacs](https://github.com/doomemacs/doomemacs), you can configure
