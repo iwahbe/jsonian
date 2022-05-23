@@ -15,6 +15,23 @@ large files, please file an issue.
 `jsonian.el` is a single file package, and can be compiled with `make build`. Just move
 the compiled `jsonian.elc` onto your load path.
 
+### Doom Emacs
+
+If you are using [Doom Emacs](https://github.com/doomemacs/doomemacs), you can configure
+doom to use `jsonian` with the following snippet.
+
+```emacs-lisp
+;;; In ~/.doom.d/packages.el
+(package! json-mode :disable t)
+
+;;; In ~/.doom.d/config.el
+(use-package! jsonian
+  :ensure t
+  :load-path "/path/to/jsonian/jsonian.el")
+
+;; To enable jsonian to work with flycheck
+(after! (jsonian flycheck) (jsonian-enable-flycheck))
+```
 #### Vanilla emacs 27+
 
 Clone the repository
@@ -24,7 +41,7 @@ cd ~/src/
 git clone git@github.com:iwahbe/jsonian.git
 ```
 
-#### Vanilla emacs 27+ raw
+#### Vanilla emacs 27+
 
 Emacs 27+ includes `so-long` mode which is derived from `prog-mode`;
 `so-long` mode will supplant `jsonian-mode` if the file has any long
@@ -74,25 +91,6 @@ package is in) exist and be in the load path
   )
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; init-jsonian-mode.el ends here
-```
-
-
-### Doom Emacs
-
-If you are using [Doom Emacs](https://github.com/doomemacs/doomemacs), you can configure
-doom to use `jsonian` with the following snippet.
-
-```emacs-lisp
-;;; In ~/.doom.d/packages.el
-(package! json-mode :disable t)
-
-;;; In ~/.doom.d/config.el
-(use-package! jsonian
-  :ensure t
-  :load-path "/path/to/jsonian/jsonian.el")
-
-;; To enable jsonian to work with flycheck
-(after! (jsonian flycheck) (jsonian-enable-flycheck))
 ```
 
 ## Integration with 3rd Parties
