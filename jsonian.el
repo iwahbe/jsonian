@@ -19,19 +19,17 @@
 (require 'json)
 (require 'seq)
 
-(defvar jsonian-string-face 'font-lock-string-face
-  "The face by which `jsonian' can identify JSON string values.")
+(defcustom jsonian-ignore-font-lock nil
+    "Prevent `font-lock' based optimizations.
+Don't use `font-lock-string-face' and `font-lock-keyword-face' to
+determine string and key values respectively."
+    :type 'boolean
+    :group 'jsonian)
 
-(defvar jsonian-key-face 'font-lock-keyword-face
-  "The face by which `jsonian' can identify JSON keys.")
-
-(defvar jsonian-ignore-font-lock nil
-  "Always ignore symbol `font-lock-mode'.
-If non-nil, `jsonian-string-face' and `jsonian-key-face' are
-ignored.")
-
-(defvar jsonian-spaces-per-indentation 4
-  "The number of spaces each increase in indentation level indicates.")
+(defcustom jsonian-spaces-per-indentation 4
+  "The number of spaces each increase in indentation level indicates."
+  :type 'integer
+  :group 'jsonian)
 
 (defun jsonian-path (&optional pos buffer)
   "Return the JSON path (as a list) of POINT in BUFFER.
@@ -300,12 +298,12 @@ It is illegal to start searching for a path inside a string or a tag."
   (let (match)
     ;; Move before string values
     (when (setq match (or
-                       (jsonian--get-font-lock-region (point) nil 'face jsonian-string-face)
+                       (jsonian--get-font-lock-region (point) nil 'face 'font-lock-string-face)
                        (let ((s (jsonian--pos-in-valuep))) (when s (cons s nil)))))
       (goto-char (car match)))
     ;; Move after string tags
     (when (setq match (or
-                       (jsonian--get-font-lock-region (point) nil 'face jsonian-key-face)
+                       (jsonian--get-font-lock-region (point) nil 'face 'font-lock-keyword-face)
                        (let ((e (jsonian--pos-in-keyp))) (when e (cons nil e)))))
       (goto-char (cdr match))))
   ;; Move before literals
@@ -364,7 +362,7 @@ Otherwise it will parse back to the beginning of the file."
                (jsonian--backward-whitespace)
                (unless (eq (char-before) ?\")
                  (user-error "Before ':' expected '\"', found '%s'" (if (bobp) "BOB" (char-before))))
-               (let* ((tag-region (jsonian--backward-string jsonian-key-face))
+               (let* ((tag-region (jsonian--backward-string 'font-lock-keyword-face))
                       (tag-text (when tag-region
                                   (buffer-substring-no-properties (1+ (car tag-region)) (1- (cdr tag-region))))))
                  (unless tag-region
@@ -378,7 +376,7 @@ Otherwise it will parse back to the beginning of the file."
                    (cl-return (cons tag-text (jsonian--path nil stop-at-valid))))))
               ;; Found a string value, ignore
               ((eq (char-before) ?\")
-               (jsonian--backward-string jsonian-string-face))
+               (jsonian--backward-string 'font-lock-string-face))
 
               ;; NOTE: I'm making a choice to parse non-string literals instead of ignoring
               ;; other characters. This ensures the partial parse is strict.
@@ -397,7 +395,7 @@ Otherwise it will parse back to the beginning of the file."
 
 (defun jsonian--get-string-region (type &optional pos buffer)
   "Find the bounds of the string at POS in BUFFER.
-Valid options for TYPE are `jsonian-string-face' and `jsonian-key-face'."
+Valid options for TYPE are `font-lock-string-face' and `font-lock-keyword-face'."
   (or (jsonian--get-font-lock-region pos buffer 'face type)
       (save-excursion
         (when buffer
@@ -405,9 +403,9 @@ Valid options for TYPE are `jsonian-string-face' and `jsonian-key-face'."
         (when pos
           (goto-char pos))
         (cond
-         ((eq type jsonian-string-face)
+         ((eq type 'font-lock-string-face)
           (and (jsonian--pos-in-valuep) (jsonian--string-at-pos)))
-         ((eq type jsonian-key-face)
+         ((eq type 'font-lock-keyword-face)
           (and (jsonian--pos-in-keyp) (jsonian--string-at-pos)))
          (t (error "'%s' is not a valid type" type))))))
 
@@ -450,7 +448,7 @@ BUFFER defaults to the current buffer."
   "Edit the string at point in another buffer."
   (interactive)
   (let ((cbuffer (current-buffer))
-        (match (jsonian--get-string-region jsonian-string-face)))
+        (match (jsonian--get-string-region 'font-lock-string-face)))
     (if (not match)
         (user-error "No string at point")
       (let* ((buffer (generate-new-buffer (concat "edit-string:" (buffer-name))))
@@ -767,6 +765,18 @@ number of spaces is determined by
       (when (seq-some (apply-partially #'eq 'json-mode) (flycheck-checker-get (car checkers) 'modes))
         (flycheck-add-mode (car checkers) 'jsonian-mode))
       (setq checkers (cdr checkers)))))
+
+;;;###autoload
+(defun jsonian-no-so-long-mode ()
+  "Prevent `so-long-mode' from supplanting `jsonian-mode'."
+  (interactive)
+  (unless (boundp 'so-long-predicate)
+    (error "so-long mode needs to be loaded"))
+  (defvar so-long-predicate)
+  (setq so-long-predicate
+        (lambda ()
+          (unless (eq major-mode 'jsonian-mode)
+            (funcall so-long-predicate)))))
 
 (provide 'jsonian)
 
