@@ -469,7 +469,7 @@ BUFFER defaults to the current buffer."
           ;; We observe the number of existing windows
           (select-window (display-buffer buffer #'display-buffer-pop-up-window))
           ;; Then we display the new buffer
-          (when (length> (window-list-1) windows)
+          (when (> (length (window-list-1)) windows)
             ;; If we have added a new window, we note to delete that window when
             ;; when we kill the display buffer
             (with-current-buffer buffer
