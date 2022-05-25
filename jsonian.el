@@ -566,19 +566,31 @@ It should *not* be toggled manually."
     s)
   "The syntax table for JSON.")
 
+(defun jsonian--after-key (pos)
+  "Detect if POS are preceded by a key (as defined by face)."
+  (let ((x (char-before pos)))
+    (while (and (not (bobp))
+                (or (= x ?\ )
+                    (= x ?\t)
+                    (= x ?\n)
+                    (= x ?\r)))
+      (setq pos (1- pos)
+            x (char-before pos)))
+    (eq (char-before pos) ?:)))
+
 (defun jsonian--syntactic-face (state)
   "Return syntactic face function for the position represented by STATE.
 STATE is a `parse-partial-sexp' state, and the returned function is the
 JSON font lock syntactic face function."
   (cond
    ((nth 3 state)
-      ;; This might be a string or a name
-    (let ((startpos (nth 8 state)))
-      (save-excursion
-        (goto-char startpos)
-        (if (jsonian--pos-in-keyp t)
-            font-lock-keyword-face
-          font-lock-string-face))))
+    ;; This might be a string or a name
+    (if (or (jsonian--after-key (nth 8 state))
+            (not (save-excursion
+                   (goto-char (nth 8 state))
+                   (jsonian--pos-in-keyp t))))
+        font-lock-string-face
+      font-lock-keyword-face))
    ((nth 4 state) font-lock-comment-face)))
 
 
