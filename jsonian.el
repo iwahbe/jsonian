@@ -726,6 +726,7 @@ designed to be installed with `advice-add' and `:before-until'."
           (cl-decf level jsonian-spaces-per-indentation)))
       level)))
 
+;;;###autoload
 (defun jsonian-indent-line ()
   "Indent a single line.
 The indent is determined by examining the previous line. The
@@ -741,12 +742,15 @@ number of spaces is determined by
 (add-to-list 'hs-special-modes-alist '(jsonian-mode "{" "}" "/[*/]" nil))
 
 (add-to-list 'magic-fallback-mode-alist '("^[{[]$" . jsonian-mode))
+
+;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.json\\'" . jsonian-mode))
 
 (defvar jsonian--font-lock-keywords
   (list (cons (regexp-opt '("true" "false")) 'font-lock-constant-face))
   "Keywords in JSON (true|false).")
 
+;;;###autoload
 (define-derived-mode jsonian-mode prog-mode "JSON"
   "Major mode for editing JSON files."
   :syntax-table jsonian-syntax-table
