@@ -31,10 +31,15 @@ doom to use `jsonian` with the following snippet.
 
 ;; To enable jsonian to work with flycheck
 (after! (jsonian flycheck) (jsonian-enable-flycheck))
+
+;; To diasable so-long mode overrides
+(after! (jsonian so-long) (jsonian-no-so-long-mode))
 ```
+
 #### Vanilla emacs 27+
 
 Clone the repository
+
 ```bash
 mkdir ~/src
 cd ~/src/
@@ -43,21 +48,20 @@ git clone git@github.com:iwahbe/jsonian.git
 
 #### Vanilla emacs 27+
 
-Emacs 27+ includes `so-long` mode which is derived from `prog-mode`;
-`so-long` mode will supplant `jsonian-mode` if the file has any long
-lines) and as such we need to remove `prog-mode` from the
-`so-long-target-modes` list if we want `jsonian-mode` to take over.
+Emacs 27+ includes `so-long` mode which will supplant `jsonian-mode` if the file has any
+long lines. To prevent `so-long` mode from taking over from `jsonian-mode`, call
+`jsonian-no-so-long-mode` after `so-long` mode has loaded.
 
 Initialize the local package with use-package making it work with `so-long`
+
 ```emacs-lisp
-;; In ~/.emacs.d/init-jsonian-mode.el
+;;; In ~/.emacs.d/init-jsonian-mode.el
 (use-package jsonian
   :load-path "~/src/jsonian"
   :ensure nil
   :after so-long
   :custom
-  (so-long-target-modes (remove 'prog-mode so-long-target-modes))
-  )
+  (jsonian-no-so-long-mode))
 ```
 
 #### Vanilla emacs 27+ wrapped in init package
@@ -66,7 +70,7 @@ Initialize the local package with use-package making it work with
 `so-long`, and also wrap it in an initialization package
 
 ```emacs-lisp
-;; In ~/.emacs.d/init.el
+;;; In ~/.emacs.d/init.el
 (require 'init-jsonian-mode)
 ```
 
@@ -74,18 +78,18 @@ Requires that `~/.emacs.d/site-elisp` (or whichever directory the
 package is in) exist and be in the load path
 
 ```emacs-lisp
-;; In ~/.emacs.d/site-elisp/init-jsonian-mode.el
+;;; In ~/.emacs.d/site-elisp/init-jsonian-mode.el
 ;;; Code:
+
 (use-package jsonian
   :load-path "~/src/jsonian"
   :ensure nil
   :after so-long
   :custom
-  (so-long-target-modes (remove 'prog-mode so-long-target-modes))
-  )
+  (jsonian-no-so-long-mode))
 
 (provide 'init-jsonian-mode)
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ;;; init-jsonian-mode.el ends here
 ```
 
