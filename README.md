@@ -22,16 +22,12 @@ doom to use `jsonian` with the following snippet.
 
 ```emacs-lisp
 ;;; In ~/.doom.d/packages.el
+(package! jsonian :recipe (:host github :repo "iwahbe/jsonian"))
 (package! json-mode :disable t)
 
 ;;; In ~/.doom.d/config.el
-(use-package! jsonian
-  :ensure t
-  :load-path "/path/to/jsonian/jsonian.el")
-
 ;; To enable jsonian to work with flycheck
 (after! (jsonian flycheck) (jsonian-enable-flycheck))
-
 ;; To diasable so-long mode overrides
 (after! (jsonian so-long) (jsonian-no-so-long-mode))
 ```
