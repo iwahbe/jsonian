@@ -1,6 +1,10 @@
 EMACS = emacs
 SHELL := /bin/bash
 
+all: build
+
+.PHONY: test lint clean
+
 build: jsonian.elc
 
 test: build jsonian-tests.elc
@@ -13,6 +17,9 @@ clean:
     echo "rm $$f" && rm $$f;               \
 	  done                                   \
     fi
+
+lint:
+	$(EMACS) -Q --batch --eval '(checkdoc-file "jsonian.el")'
 
 %.elc: %.el
 	$(EMACS) -Q --batch -L . -f batch-byte-compile $<

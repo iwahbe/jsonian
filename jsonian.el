@@ -3,7 +3,7 @@
 ;; Copyright (C) 2022 Ian Wahbe
 
 ;; Author: Ian Wahbe
-;; URL: https://github.com/iwahbe/json-fixer
+;; URL: https://github.com/iwahbe/jsonian
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "26.1"))
 
@@ -59,9 +59,9 @@ b. leveraging C code whenever possible."
 
 (defmacro jsonian--defun-predicate-traversal (name arg-list predicate)
   "Define `jsonian--forward-NAME' and `jsonian--backward-NAME'.
-NAME is an unquoted symbol. ARG-LIST defines a single variable
+NAME is an unquoted symbol.  ARG-LIST defines a single variable
 name which will be bound to the value of the character to
-examine. PREDICATE is the function body to call. A non-nil value
+examine.  PREDICATE is the function body to call.  A non-nil value
 determines that the argument is in the category NAME."
   (declare (indent defun))
   `(progn
@@ -111,12 +111,12 @@ LITERAL is the string literal to be traversed."
 (defmacro jsonian--defun-traverse (name &optional arg arg2)
   "Define a functions to traverse literals or predicate defined range.
 Generated functions are `jsonian--forward-NAME' and
-`jsonian--backward-NAME'. If NAME is a string literal, generate a
-function to parse the literal NAME. It is illegal to supply ARG
-or ARG2 if NAME is a string literal. If NAME is a symbol
+`jsonian--backward-NAME'.  If NAME is a string literal, generate a
+function to parse the literal NAME.  It is illegal to supply ARG
+or ARG2 if NAME is a string literal.  If NAME is a symbol
 generated functions determine that a character (car ARG) is part
 of the parse group by calling ARG with (car ARG) bound to a
-character. If NAME is a symbol, it is illegal not to supply ARG
+character.  If NAME is a symbol, it is illegal not to supply ARG
 and ARG2."
   (declare (indent defun))
   (if (stringp name)
@@ -143,7 +143,7 @@ and ARG2."
 (defun jsonian--backward-string (&optional expected-face)
   "Move back a string, starting at the ending \".
 If the string is highlighted with the `face' EXPECTED-FACE, then
-use the face to define the scope of the region. If the string
+use the face to define the scope of the region.  If the string
 does not have face EXPECTED-FACE, the string is manually parsed."
   (unless (eq (char-before) ?\")
     (error "backward-string: Expected to start at \""))
@@ -160,7 +160,7 @@ does not have face EXPECTED-FACE, the string is manually parsed."
 (defun jsonian--forward-string (&optional expected-face)
   "Move forward a string, starting at the beginning \".
 If the string is highlighted with the `face' EXPECTED-FACE, use
-the face to define the scope of the string. Otherwise the string
+the face to define the scope of the string.  Otherwise the string
 is manually parsed."
   (unless (= (char-after) ?\")
     (error "forward-string: Expected to start at \""))
@@ -174,7 +174,7 @@ is manually parsed."
 
 (defun jsonian--string-scan-back ()
   "Scan backwards from `point' looking for the beginning of a string.
-`jsonian--string-scan-back' will not move between lines. A non-nil
+`jsonian--string-scan-back' will not move between lines.  A non-nil
 result is returned if a string beginning was found."
   (let (done exit)
     (while (not (or done exit))
@@ -194,12 +194,12 @@ result is returned if a string beginning was found."
 
 (defun jsonian--string-scan-forward (&optional at-beginning)
   "Find the front of the current string.
-`jsonian--string-scan-back' is called internally. When a string is found
+`jsonian--string-scan-back' is called internally.  When a string is found
 the position of the final \" is returned and the point is moved
-to just past that. When no string is found, nil is returned.
+to just past that.  When no string is found, nil is returned.
 
 If AT-BEGINNING is non-nil, `jsonian--string-scan-forward' assumes
-it is at the beginning of the string. Otherwise it scans
+it is at the beginning of the string.  Otherwise it scans
 backwards to ensure that the end of a string is not escaped."
   (let ((start (if at-beginning (point) (jsonian--pos-in-stringp)))
         escaped
@@ -219,7 +219,7 @@ backwards to ensure that the end of a string is not escaped."
 (defun jsonian--pos-in-stringp ()
   "Determine if `point' is in a string (either a key or a value).
 `jsonian--pos-in-string' will only examine between `point' and
-`beginning-of-line'. When non-nil, the starting position of the
+`beginning-of-line'.  When non-nil, the starting position of the
 discovered string is returned."
   (save-excursion
     (let (in-string start done)
@@ -256,7 +256,7 @@ returned."
 
 (defun jsonian--string-at-pos (&optional pos)
   "Return (start . end) for a string at POS if it exists.
-Otherwise nil is returned. POS defaults to `ponit'."
+Otherwise nil is returned.  POS defaults to `ponit'."
   (save-excursion
     (when pos
       (goto-char pos))
@@ -317,7 +317,7 @@ It is illegal to start searching for a path inside a string or a tag."
 (defun jsonian--path (allow-tags stop-at-valid)
   "Helper function for `jsonian-path'.
 Will pick up object level tags at the current level of if
-ALLOW-TAGS is non nil. When STOP-AT-VALID is non-nil,
+ALLOW-TAGS is non nil.  When STOP-AT-VALID is non-nil,
 `jsonian-path' will parse back to the enclosing object or array.
 Otherwise it will parse back to the beginning of the file."
   ;; The number of previously encountered objects in this list (if we
@@ -411,8 +411,8 @@ Valid options for TYPE are `font-lock-string-face' and `font-lock-keyword-face'.
 
 (defun jsonian--get-font-lock-region (&optional pos buffer property property-value)
   "Find the bounds of the font-locked region surrounding POS in BUFFER.
-If PROPERTY-VALUE is set, the returned region has that value. POS
-defaults to `point'. BUFFER defaults to `current-buffer'.
+If PROPERTY-VALUE is set, the returned region has that value.  POS
+defaults to `point'.  BUFFER defaults to `current-buffer'.
 PROPERTY defaults to `face'."
   (when (not jsonian-ignore-font-lock)
     (let ((pos (or pos (point)))
@@ -449,32 +449,35 @@ BUFFER defaults to the current buffer."
   (interactive)
   (let ((cbuffer (current-buffer))
         (match (jsonian--get-string-region 'font-lock-string-face)))
-    (if (not match)
-        (user-error "No string at point")
-      (let* ((buffer (generate-new-buffer (concat "edit-string:" (buffer-name))))
-             (overlay (make-overlay (car match) (cdr match) cbuffer))
-             (match (cons (1+ (car match)) (1- (cdr match))))
-             (text (buffer-substring-no-properties (car match) (cdr match))))
-        (overlay-put overlay 'face (list :background "white"))
-        (read-only-mode +1)
-        (with-current-buffer buffer
-          (insert text)
-          (jsonian--unintern-special-chars (current-buffer))
-          (goto-char (point-min))
-          (setq-local jsonian-edit-return-var (make-jsonian--edit-return
-                                                  :match match
-                                                  :back-buffer cbuffer
-                                                  :overlay overlay)))
-        (let ((windows (length (window-list-1))))
-          ;; We observe the number of existing windows
-          (select-window (display-buffer buffer #'display-buffer-pop-up-window))
-          ;; Then we display the new buffer
-          (when (> (length (window-list-1)) windows)
-            ;; If we have added a new window, we note to delete that window when
-            ;; when we kill the display buffer
-            (with-current-buffer buffer
-              (setf (jsonian--edit-return-delete-window jsonian-edit-return-var) t))))
-        (jsonian--edit-mode +1)))))
+    (unless match (user-error "No string at point"))
+    (let* ((edit-buffer (generate-new-buffer (concat "edit-string:" (buffer-name))))
+           (overlay (make-overlay (car match) (cdr match) cbuffer))
+           (match (cons (1+ (car match)) (1- (cdr match))))
+           (text (buffer-substring-no-properties (car match) (cdr match))))
+      (overlay-put overlay 'face (list :background "white"))
+      (read-only-mode +1)
+      (with-current-buffer edit-buffer
+        (insert text)
+        (jsonian--unintern-special-chars (current-buffer))
+        (goto-char (point-min))
+        (setq-local jsonian-edit-return-var (make-jsonian--edit-return
+                                             :match match
+                                             :back-buffer cbuffer
+                                             :overlay overlay)))
+      (let ((windows (length (window-list-1))))
+        ;; We observe the number of existing windows
+        (select-window (display-buffer edit-buffer #'display-buffer-pop-up-window))
+        ;; Then we display the new buffer
+        (when (> (length (window-list-1)) windows)
+          ;; If we have added a new window, we note to delete that window when
+          ;; when we kill the display buffer
+          (with-current-buffer edit-buffer
+            (setf (jsonian--edit-return-delete-window jsonian-edit-return-var) t))))
+      (jsonian--edit-mode +1)
+      (setq header-line-format
+            (substitute-command-keys
+             "Edit, then exit with `\\[jsonian-edit-mode-return]' or abort with \
+`\\[jsonian-edit-mode-cancel]'")))))
 
 (defun jsonian--intern-special-chars (buffer)
   "Translates whitespace operators to their ansi equivalents in BUFFER.
@@ -668,7 +671,7 @@ ARG is currently ignored."
   nil)
 
 (defun jsonian-narrow-to-defun (&optional arg)
-  "Narrows to region for `jsonian-mode'. ARG is ignored."
+  "Narrows to region for `jsonian-mode'.  ARG is ignored."
   ;; Arg is present to comply with the function signature of `narrow-to-defun'.
   ;; Its value is ignored.
   (setq arg (or arg))
@@ -687,7 +690,7 @@ ARG is currently ignored."
 
 (defun jsonian--correct-narrow-to-defun (&optional arg)
   "Correct `narrow-to-defun' for `jsonian-mode' via the advice system.
-ARG is passed onto `jsonian-narrow-to-defun'. This function is
+ARG is passed onto `jsonian-narrow-to-defun'.  This function is
 designed to be installed with `advice-add' and `:before-until'."
   (interactive)
   (let ((correct (eq major-mode 'jsonian-mode)))
@@ -729,7 +732,7 @@ designed to be installed with `advice-add' and `:before-until'."
 ;;;###autoload
 (defun jsonian-indent-line ()
   "Indent a single line.
-The indent is determined by examining the previous line. The
+The indent is determined by examining the previous line.  The
 number of spaces is determined by
 `jsonian-spaces-per-indentation'."
   (interactive)
