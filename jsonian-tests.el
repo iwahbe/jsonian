@@ -24,8 +24,11 @@
 
 (ert-deftest jsonian--display-path ()
   (should (string=
-           "[\"foo\"][\"bar\"][3][2][\"buzz\"]"
-           (jsonian--display-path '("foo" "bar" 3 2 "buzz")))))
+           "[\"fo]o\"][\"bar\"][3][2][\"buzz\"]"
+           (jsonian--display-path '("fo]o" "bar" 3 2 "buzz"))))
+  (should (string=
+           "[\"fo]o\"].bar[3][2].buzz"
+           (jsonian--display-path '("fo]o" "bar" 3 2 "buzz") t))))
 
 (ert-deftest jsonian--defun-traverse-literal ()
   (with-temp-buffer
@@ -142,6 +145,22 @@ We test that all lines are unchanged"
              (jsonian-path 75)
              '("fizz" 4 "some")))
     (should (= (point) (point-min)))))
+
+(ert-deftest jsonian-simple-segment ()
+  "Check that we correctly identify simple segments."
+  (mapc
+   (lambda (x)
+     (should (eq (jsonian--simple-path-segment-p (car x)) (cdr x))))
+   '(
+     ("foo" . t)
+     ("foo:bar" . t)
+     ("fizz/buz" . t)
+     ("bar." . nil)
+     ("has space" . nil)
+     ("has\ttab" . nil)
+     ("no\"quotes\"" . nil)
+     ("[squares" . nil)
+     ("other]" . nil))))
 
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here

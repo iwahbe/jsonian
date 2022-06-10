@@ -282,15 +282,29 @@ Otherwise nil is returned. POS defaults to `ponit'."
             input)
     path))
 
-(defun jsonian--display-path (path)
-  "Convert the reconstructed JSON path PATH to a string."
+(defun jsonian--display-path (path &optional pretty)
+  "Convert the reconstructed JSON path PATH to a string.
+If PRETTY is non-nil, format for human readable."
   (mapconcat
    (lambda (el)
      (cond
       ((numberp el) (format "[%d]" el))
-      ((stringp el) (format "[\"%s\"]" el))
+      ((stringp el) (format
+                     (if (and pretty (jsonian--simple-path-segment-p el))
+                         ".%s" "[\"%s\"]")
+                     el))
       (t (error "Unknown path element %s" path))))
    path ""))
+
+(defun jsonian--simple-path-segment-p (segment)
+  "If SEGMENT can be displayed simply, or if it needs to be escaped.
+
+A segment is considered simple if and only if it does not contain any
+- blanks
+- period
+- quotes
+- square brackets"
+  (not (string-match-p "\\([[:blank:].\"\\[]\\|\\]\\)" segment)))
 
 (defun jsonian--correct-starting-point ()
   "Move point to a valid place to start searching for a path.
