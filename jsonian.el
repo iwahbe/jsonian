@@ -9,7 +9,7 @@
 
 ;;; Commentary:
 
-;; Provides functions to edit JSON files. So far these include
+;; Provides functions to edit JSON files.  So far these include
 ;; - `jsonian-path': Display the path to a point in a JSON file.
 ;; - `jsonian-edit-string': A connivance function for editing a JSON string in a separate buffer.
 
