@@ -538,7 +538,7 @@ This means replacing '\\n' with '\n' and '\\t' with '\t'."
 This mode is used to setup editing functions for strings at point.
 It should *not* be toggled manually."
   :global nil
-  :lighter "edit-string"
+  :lighter " edit-string"
   :keymap (list
            (cons (kbd "C-c C-c") #'jsonian-edit-mode-return)
            (cons (kbd "C-c C-k") #'jsonian-edit-mode-cancel)))
