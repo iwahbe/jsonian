@@ -37,14 +37,19 @@ determine string and key values respectively."
   :type 'integer
   :group 'jsonian)
 
-(defun jsonian-path (plain &optional pos buffer)
-  "Return the JSON path (as a list) of POINT in BUFFER.
-It is assumed that BUFFER is entirely JSON and that the json is
-valid from POS to `point-min'.
+(defun jsonian-path (&optional plain pos buffer)
+  "Find the JSON path of POINT in BUFFER.
+If called interactively, then the path is printed to the
+minibuffer and pre-appended to the kill ring.  If called
+non-interactively, then the path is returned as a list of strings
+and numbers.  It is assumed that BUFFER is entirely JSON and that
+the json is valid from POS to `point-min'.  PLAIN indicates that
+the path should be formated using only indexes.  Otherwise index
+notation is used.
 
 For example
     { \"foo\": [ { \"bar\": █ }, { \"fizz\": \"buzz\" } ] }
-with pos at █ should yield \"[foo][0][bar]\".
+with pos at █ should yield \".foo[0].bar\".
 
 `jsonian-path' is optimized to work on very large json files (35 MiB+).
 This optimization is achieved by

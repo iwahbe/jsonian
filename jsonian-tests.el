@@ -142,7 +142,7 @@ We test that all lines are unchanged"
 (ert-deftest jsonian-path ()
   (with-file-and-point "path1" (point-min)
     (should (equal
-             (jsonian-path 75)
+             (jsonian-path nil 75)
              '("fizz" 4 "some")))
     (should (= (point) (point-min)))))
 
