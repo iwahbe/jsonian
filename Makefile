@@ -23,12 +23,12 @@ clean:
 lint: checkdoc package-lint
 
 package-lint:
-	$(EMACS) -Q --batch                                                                  \
-	  --eval "(setq package-user-dir \"$$(pwd)/bin\")"                                   \
-	  --eval "(setq package-archives '((\"melpa\" . \"https://melpa.org/packages/\")     \
-	                                   (\"gnu\" . \"https://elpa.gnu.org/packages/\")))" \
-	  --eval '(package-initialize)'                                                      \
-	  --eval "(package-install 'package-lint)"                                           \
+	$(EMACS) -Q --batch                                                        \
+	  --eval "(progn (setq package-user-dir \"$$(pwd)/bin\")                   \
+      (require 'package)                                                     \
+      (push '(\"melpa\" . \"https://melpa.org/packages/\") package-archives) \
+	    (package-initialize)                                                   \
+	    (package-install 'package-lint))"                                      \
 	  -f package-lint-batch-and-exit jsonian.el
 
 checkdoc:
