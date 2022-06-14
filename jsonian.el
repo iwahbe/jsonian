@@ -738,25 +738,25 @@ designed to be installed with `advice-add' and `:before-until'."
     (let ((level 0))
       (save-excursion ;; The previous line - end
         (end-of-line 0) ;;Roll backward to the end of the previous line
-        (while  (or (eq (char-before) ?\ ) ;; Then find the first non-whitespace character
-                    (eq (char-before) ?\t))
+        (while (or (eq (char-before) ?\ ) ;; Then find the first non-whitespace character
+                   (eq (char-before) ?\t))
           (backward-char))
         (when (or (eq (char-before) ?\{)
                   (eq (char-before) ?\[))
           ;; If it is a opening \{ or \[, the next line should be indented by 1 unit
           (cl-incf level jsonian-spaces-per-indentation))
         (beginning-of-line)
-        (while (and (char-after) (or (= (char-after) ?\ )
-                                     (= (char-after) ?\t)))
+        (while (or (eq (char-after) ?\ )
+                   (eq (char-after) ?\t))
           (forward-char))
         (cl-incf level (current-column)))
       (save-excursion
         (beginning-of-line)
-        (while (and (char-after) (or (= (char-after) ?\ )
-                                     (= (char-after) ?\t)))
+        (while (or (eq (char-after) ?\ )
+                   (eq (char-after) ?\t))
           (forward-char))
-        (when (or (= (char-after) ?\})
-                  (= (char-after) ?\]))
+        (when (or (eq (char-after) ?\})
+                  (eq (char-after) ?\]))
           (cl-decf level jsonian-spaces-per-indentation)))
       level)))
 
