@@ -3,7 +3,7 @@ SHELL := /bin/bash
 
 all: build
 
-.PHONY: test lint clean
+.PHONY: test lint clean checkdoc package-lint
 
 build: jsonian.elc
 
@@ -14,16 +14,30 @@ clean:
 	@# We do this so removed files are listed
 	@if compgen -G "*.elc" > /dev/null; then \
 	  for f in *.elc; do                     \
-    echo "rm $$f" && rm $$f;               \
+    echo "rm $$f" && rm $$f;                 \
 	  done                                   \
     fi
+	@rm -rf bin
 
 # Here we want run checkdoc-file, and error if it finds a lint.
-lint:
+lint: checkdoc package-lint
+
+package-lint:
+	$(EMACS) -Q --batch                                                                  \
+	  --eval "(setq package-user-dir \"$$(pwd)/bin\")"                                   \
+	  --eval "(setq package-archives '((\"melpa\" . \"https://melpa.org/packages/\")     \
+	                                   (\"gnu\" . \"https://elpa.gnu.org/packages/\")))" \
+	  --eval '(package-initialize)'                                                      \
+	  --eval "(package-install 'package-lint)"                                           \
+	  -f package-lint-batch-and-exit jsonian.el
+
+checkdoc:
 	$(EMACS) -Q --batch \
     --eval '(checkdoc-file "jsonian.el")' 2> lint.log
 	@cat lint.log # Display the lint to the user.
 	@[ "$$(cat lint.log)" == "" ] # Error if something was written
 
 %.elc: %.el
-	$(EMACS) -Q --batch -L . -f batch-byte-compile $<
+	$(EMACS) -Q --batch -L .                       \
+	  --eval "(setq byte-compile-error-on-warn t)" \
+	  -f batch-byte-compile $<
