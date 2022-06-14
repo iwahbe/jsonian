@@ -6,18 +6,17 @@ on:
 env:
   PR_COMMIT_SHA: ${{ github.event.client_payload.pull_request.head.sha }}
 jobs:
-  name: Build and test
-  runs-on: ubuntu-latest
-  steps:
-    - uses: purcell/setup-emacs@master
-      with:
-        version: "26.1"
-    - uses: actions/checkout@v2
-      with:
-        ref: ${{ env.PR_COMMIT_SHA }}
-    - name: test
-      needs: setup
-      run: make test
-    - name: lint
-      needs: setup
-      run: make lint
+  build_and_test:
+    steps:
+      - uses: purcell/setup-emacs@master
+        with:
+          version: "26.1"
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ env.PR_COMMIT_SHA }}
+      - name: test
+        needs: setup
+        run: make test
+      - name: lint
+        needs: setup
+        run: make lint
