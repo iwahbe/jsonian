@@ -7,6 +7,12 @@
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "26.1"))
 
+;; License:
+
+;; GNU GENERAL PUBLIC LICENSE
+;;    Version 3, 29 June 2007
+;; For the full boilerplate, see LICENSE
+
 ;;; Commentary:
 
 ;; Provides functions to edit JSON files.  So far these include
