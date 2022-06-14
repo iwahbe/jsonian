@@ -37,27 +37,32 @@ determine string and key values respectively."
   :type 'integer
   :group 'jsonian)
 
-(defun jsonian-path (&optional pos buffer)
-  "Return the JSON path (as a list) of POINT in BUFFER.
-It is assumed that BUFFER is entirely JSON and that the json is
-valid from POS to `point-min'.
+(defun jsonian-path (&optional plain pos buffer)
+  "Find the JSON path of POINT in BUFFER.
+If called interactively, then the path is printed to the
+minibuffer and pre-appended to the kill ring.  If called
+non-interactively, then the path is returned as a list of strings
+and numbers.  It is assumed that BUFFER is entirely JSON and that
+the json is valid from POS to `point-min'.  PLAIN indicates that
+the path should be formated using only indexes.  Otherwise index
+notation is used.
 
 For example
     { \"foo\": [ { \"bar\": █ }, { \"fizz\": \"buzz\" } ] }
-with pos at █ should yield \"[foo][0][bar]\".
+with pos at █ should yield \".foo[0].bar\".
 
 `jsonian-path' is optimized to work on very large json files (35 MiB+).
 This optimization is achieved by
 a. parsing as little of the file as necessary to find the path and
 b. leveraging C code whenever possible."
-  (interactive)
+  (interactive "P")
   (with-current-buffer (or buffer (current-buffer))
     (save-excursion
       (when pos (goto-char pos))
       (jsonian--correct-starting-point)
       (let ((result (jsonian--reconstruct-path (jsonian--path t nil))) display)
         (when (called-interactively-p 'interactive)
-          (setq display (jsonian--display-path result))
+          (setq display (jsonian--display-path result (not plain)))
           (message "Path: %s" display)
           (kill-new display))
         result))))
@@ -288,15 +293,28 @@ Otherwise nil is returned.  POS defaults to `ponit'."
             input)
     path))
 
-(defun jsonian--display-path (path)
-  "Convert the reconstructed JSON path PATH to a string."
+(defun jsonian--display-path (path &optional pretty)
+  "Convert the reconstructed JSON path PATH to a string.
+If PRETTY is non-nil, format for human readable."
   (mapconcat
    (lambda (el)
      (cond
       ((numberp el) (format "[%d]" el))
-      ((stringp el) (format "[\"%s\"]" el))
+      ((stringp el) (format
+                     (if (and pretty (jsonian--simple-path-segment-p el))
+                         ".%s" "[\"%s\"]")
+                     el))
       (t (error "Unknown path element %s" path))))
    path ""))
+
+(defun jsonian--simple-path-segment-p (segment)
+  "If SEGMENT can be displayed simply, or if it needs to be escaped.
+A segment is considered simple if and only if it does not contain any
+- blanks
+- period
+- quotes
+- square brackets"
+  (not (string-match-p "\\([[:blank:].\"\\[]\\|\\]\\)" segment)))
 
 (defun jsonian--correct-starting-point ()
   "Move point to a valid place to start searching for a path.
