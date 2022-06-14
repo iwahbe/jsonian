@@ -28,6 +28,8 @@ package-lint:
       (require 'package)                                                     \
       (push '(\"melpa\" . \"https://melpa.org/packages/\") package-archives) \
 	    (package-initialize)                                                   \
+      (unless package-archive-contents                                       \
+        (package-refresh-contents))                                          \
 	    (package-install 'package-lint))"                                      \
 	  -f package-lint-batch-and-exit jsonian.el
 
