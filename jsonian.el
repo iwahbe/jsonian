@@ -444,7 +444,14 @@ PROPERTY defaults to `face'."
           found)
       (with-current-buffer (or buffer (current-buffer))
         (setq found (get-text-property pos property))
-        (when (and found (if property-value (equal property-value found) t))
+        (when (and
+               found
+               (if property-value (equal property-value found) t)
+               ;; We do this check so other font effects like todo highlighting
+               ;; in strings don't break get string. It is a heuristic check, so
+               ;; may be wrong if we find the string/key `"foo\"BAR"'. and BAR
+               ;; is highlighted in another face.
+               (eq (char-before (next-single-property-change pos property)) ?\"))
           (cons
            (previous-single-property-change pos property)
            (next-single-property-change pos property)))))))
