@@ -15,8 +15,6 @@ jobs:
         with:
           ref: ${{ env.PR_COMMIT_SHA }}
       - name: test
-        needs: setup
         run: make test
       - name: lint
-        needs: setup
         run: make lint
