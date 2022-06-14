@@ -157,7 +157,7 @@ If the string is highlighted with the `face' EXPECTED-FACE, then
 use the face to define the scope of the region.  If the string
 does not have face EXPECTED-FACE, the string is manually parsed."
   (unless (eq (char-before) ?\")
-    (error "backward-string: Expected to start at \""))
+    (error "`jsonian--backward-string': Expected to start at \""))
   (let ((match (and expected-face (jsonian--get-font-lock-region nil nil 'face expected-face))))
     (if match
         ;; The region is highlighted, so just jump to the beginning of that.
@@ -174,7 +174,7 @@ If the string is highlighted with the `face' EXPECTED-FACE, use
 the face to define the scope of the string.  Otherwise the string
 is manually parsed."
   (unless (= (char-after) ?\")
-    (error "forward-string: Expected to start at \""))
+    (error "`jsonian--forward-string': Expected to start at \""))
   (let ((match (and expected-face (jsonian--get-font-lock-region nil nil 'face expected-face))))
     (if match
         (progn (goto-char (cdr match)) match)
@@ -814,7 +814,7 @@ number of spaces is determined by
   "Prevent `so-long-mode' from supplanting `jsonian-mode'."
   (interactive)
   (unless (boundp 'so-long-predicate)
-    (error "so-long mode needs to be loaded"))
+    (user-error "`so-long' mode needs to be loaded"))
   (defvar so-long-predicate)
   (setq so-long-predicate
         (lambda ()

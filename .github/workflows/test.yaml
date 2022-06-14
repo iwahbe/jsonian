@@ -1,0 +1,21 @@
+name: test
+on:
+  pull_request:
+    branches:
+      - main
+env:
+  PR_COMMIT_SHA: ${{ github.event.client_payload.pull_request.head.sha }}
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: purcell/setup-emacs@master
+        with:
+          version: "26.1"
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ env.PR_COMMIT_SHA }}
+      - name: test
+        run: make test
+      - name: lint
+        run: make lint
