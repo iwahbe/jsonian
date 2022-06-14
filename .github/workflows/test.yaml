@@ -6,7 +6,8 @@ on:
       - main
 jobs:
   steps:
-    - uses: purcell/setup-emacs@master
+    - name: install
+      uses: purcell/setup-emacs@master
       with:
         version: 26.1
     - name: test
