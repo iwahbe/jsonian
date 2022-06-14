@@ -31,7 +31,7 @@ determine string and key values respectively."
   :type 'integer
   :group 'jsonian)
 
-(defun jsonian-path (&optional pos buffer)
+(defun jsonian-path (plain &optional pos buffer)
   "Return the JSON path (as a list) of POINT in BUFFER.
 It is assumed that BUFFER is entirely JSON and that the json is
 valid from POS to `point-min'.
@@ -44,14 +44,14 @@ with pos at █ should yield \"[foo][0][bar]\".
 This optimization is achieved by
 a. parsing as little of the file as necessary to find the path and
 b. leveraging C code whenever possible."
-  (interactive)
+  (interactive "P")
   (with-current-buffer (or buffer (current-buffer))
     (save-excursion
       (when pos (goto-char pos))
       (jsonian--correct-starting-point)
       (let ((result (jsonian--reconstruct-path (jsonian--path t nil))) display)
         (when (called-interactively-p 'interactive)
-          (setq display (jsonian--display-path result))
+          (setq display (jsonian--display-path result (not plain)))
           (message "Path: %s" display)
           (kill-new display))
         result))))
@@ -298,7 +298,6 @@ If PRETTY is non-nil, format for human readable."
 
 (defun jsonian--simple-path-segment-p (segment)
   "If SEGMENT can be displayed simply, or if it needs to be escaped.
-
 A segment is considered simple if and only if it does not contain any
 - blanks
 - period
