@@ -1,4 +1,5 @@
 name: test
+runs-on: ubuntu-latest
 on:
   pull_request:
     branches:
