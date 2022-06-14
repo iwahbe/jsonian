@@ -4,13 +4,13 @@ on:
     branches:
       - main
 jobs:
-  setup:
-    uses: purcell/setup-emacs@master
-    with:
-      version: 26.1
-  test:
-    needs: setup
-    run: make test
-  lint:
-    needs: setup
-    run: make lint
+  steps:
+    - uses: purcell/setup-emacs@master
+      with:
+        version: 26.1
+    - name: test
+      needs: setup
+      run: make test
+    - name: lint
+      needs: setup
+      run: make lint
