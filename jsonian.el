@@ -323,8 +323,10 @@ It is illegal to start searching for a path inside a string or a tag."
   (let (match)
     ;; Move before string values
     (when (setq match (or
-                       (jsonian--get-font-lock-region (point) nil 'face 'font-lock-string-face)
-                       (let ((s (jsonian--pos-in-valuep))) (when s (cons s nil)))))
+                       (let ((s (jsonian--get-font-lock-region (point) nil 'face 'font-lock-string-face)))
+                         (and (car-safe s) s))
+                       (let ((s (jsonian--pos-in-valuep)))
+                         (when s (cons s nil)))))
       (goto-char (car match)))
     ;; Move after string tags
     (when (setq match (or
@@ -695,10 +697,51 @@ TYPE is a flag specifying the type of completion."
   (cond
    ((eq type nil) (error "`nil' mode not supported"))
    ((eq type t) (error "`t' mode not supported"))
-   ((eq type 'lambda) (error "`lambda' mode not supported"))
+   ((eq type 'lambda) (jsonian--valid-path-p (jsonian--parse-path str)))
    ((eq (car-safe type) 'boundaries) (error "`boundaries' mode not supported"))
    ;; We specify an empty alist right now.
    ((eq type 'metadata) (cons 'metadata nil))))
+
+(defun jsonian--valid-path-p (path)
+  "Check if PATH is a valid path in the current JSON buffer.
+PATH should be a list of segments.  A path is considered valid if
+it traverses existing structures in the buffer JSON.  It does not
+need to be a leaf path."
+  (save-excursion
+    (goto-char (point-min))
+    (jsonian--forward-whitespace)
+    (forward-char)
+    (let (failed leaf)
+      (while (and path (not failed) (not leaf))
+        (unless (seq-some
+                 (lambda (x)
+                   (when (equal (car x) (car path))
+                     (goto-char (cdr x))
+                     (cond
+                      ;; Progress into the key
+                      ((eq (char-after) ?\")
+                       (if-let ((end (jsonian--pos-in-keyp t)))
+                           (progn (goto-char end)
+                                  (jsonian--forward-whitespace)
+                                  (forward-char) ;; go past the `:'
+                                  (jsonian--forward-whitespace)
+                                  ;; and then the underlying value
+                                  (forward-char))
+                         ;; We have found a string that is not a key, so it must
+                         ;; be a value. That means we have hit a leaf.
+                         (setq leaf t)))
+                      ;; Progress into the object
+                      ((eq (char-after) ?\[) (forward-char))
+                      ;; Progress into the array
+                      ((eq (char-after) ?\{) (forward-char))
+                      (t (setq leaf t)))
+                     t))
+                 (jsonian--find-siblings))
+          (setq failed t))
+        (setq path (cdr path)))
+      ;; We reject if we have noticed a failure or exited early by hitting a
+      ;; leaf node
+      (and (not failed) (not path)))))
 
 (defun jsonian--parse-path (str)
   "Parse STR as a JSON path.
@@ -736,14 +779,14 @@ string or a integer.  Point is a char location."
                   (eq (char-after) ?\]))
         (let ((elements
                (list (cons
-                      (if-let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp))))
-                          (buffer-substring-no-properties (point) end)
+                      (if-let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp t))))
+                          (buffer-substring-no-properties (1+ (point)) (1- end))
                         0)
                       (point)))))
           (while (jsonian--traverse-forward)
             (setq elements (cons
                             (cons (if-let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp))))
-                                      (buffer-substring-no-properties (point) end)
+                                      (buffer-substring-no-properties (1+ (point)) (1- end))
                                     (length elements))
                                   (point))
                             elements)))
@@ -758,15 +801,15 @@ string or a integer.  Point is a char location."
     (while (and (> n 0) (not done))
       (jsonian--forward-whitespace)
       (cond
-       ((= (char-after) ?\") (jsonian--forward-string))
-       ((= (char-after) ?:) (forward-char))
-       ((= (char-after) ?t) (jsonian--forward-true))
-       ((= (char-after) ?f) (jsonian--forward-false))
-       ((= (char-after) ?\{) (forward-list))
-       ((= (char-after) ?\[) (forward-list))
+       ((eq (char-after) ?\") (jsonian--forward-string))
+       ((eq (char-after) ?:) (forward-char))
+       ((eq (char-after) ?t) (jsonian--forward-true))
+       ((eq (char-after) ?f) (jsonian--forward-false))
+       ((eq (char-after) ?\{) (forward-list))
+       ((eq (char-after) ?\[) (forward-list))
        ((and (>= (char-after) ?0) (<= (char-after) ?9)) (jsonian--forward-number))
-       ((= (char-after) ?,) (setq n (1- n)) (forward-char) (jsonian--forward-whitespace))
-       ((or (= (char-after) ?\]) (= (char-after) ?\})) (setq done t))
+       ((eq (char-after) ?,) (setq n (1- n)) (forward-char) (jsonian--forward-whitespace))
+       ((or (eq (char-after) ?\]) (= (char-after) ?\})) (setq done t))
        (t (user-error "Unexpected character '%c'" (char-after)))))
     (jsonian--forward-whitespace)
     (not done)))
