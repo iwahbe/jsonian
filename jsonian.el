@@ -637,6 +637,18 @@ JSON font lock syntactic face function."
       (unless (bobp) (backward-char))
       result)))
 
+(defun jsonian-enclosing-item (&optional arg)
+  "Move point to the item enclosing the current point.
+If ARG is not nil, move to the ARGth enclosing item."
+  (interactive "P")
+  (dotimes (_ (or arg 1))
+    (jsonian--enclosing-item))
+  (when (and (not (eq arg 0)) (jsonian--after-key (point)))
+    (jsonian--backward-whitespace)
+    (backward-char)
+    (jsonian--backward-whitespace)
+    (jsonian--backward-string)))
+
 (defun jsonian--enclosing-item ()
   "Go the the enclosing item start."
   (when (jsonian--enclosing-object-or-array)
@@ -738,9 +750,7 @@ designed to be installed with `advice-add' and `:before-until'."
     (let ((level 0))
       (save-excursion ;; The previous line - end
         (end-of-line 0) ;;Roll backward to the end of the previous line
-        (while (or (eq (char-before) ?\ ) ;; Then find the first non-whitespace character
-                   (eq (char-before) ?\t))
-          (backward-char))
+        (jsonian--backward-whitespace)
         (when (or (eq (char-before) ?\{)
                   (eq (char-before) ?\[))
           ;; If it is a opening \{ or \[, the next line should be indented by 1 unit
@@ -750,11 +760,9 @@ designed to be installed with `advice-add' and `:before-until'."
                    (eq (char-after) ?\t))
           (forward-char))
         (cl-incf level (current-column)))
-      (save-excursion
+      (save-excursion ;; Make sure that we account for any closing brackets in front of (point)
         (beginning-of-line)
-        (while (or (eq (char-after) ?\ )
-                   (eq (char-after) ?\t))
-          (forward-char))
+        (jsonian--forward-whitespace)
         (when (or (eq (char-after) ?\})
                   (eq (char-after) ?\]))
           (cl-decf level jsonian-spaces-per-indentation)))
@@ -772,6 +780,7 @@ number of spaces is determined by
 (defvar jsonian-mode-map (make-sparse-keymap))
 (define-key jsonian-mode-map (kbd "C-c C-p") #'jsonian-path)
 (define-key jsonian-mode-map (kbd "C-c C-s") #'jsonian-edit-string)
+(define-key jsonian-mode-map (kbd "C-c C-e") #'jsonian-enclosing-item)
 
 (add-to-list 'hs-special-modes-alist '(jsonian-mode "{" "}" "/[*/]" nil))
 
