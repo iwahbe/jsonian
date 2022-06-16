@@ -108,8 +108,21 @@ Return the JSON path (as a list) of POINT in BUFFER.
 It is assumed that BUFFER is entirely JSON and that the json is
 valid from POS to ‘point-min’.
 
-For example
-{ "foo": [ { "bar": █ }, { "fizz": "buzz" } ] }
+For example:
+
+```json
+{
+  "foo": [
+    {
+      "bar": "█"
+    },
+    {
+      "fizz": "buzz"
+    }
+  ]
+}
+```
+
 with pos at █ should yield "[foo][0][bar]".
 
 ‘jsonian-path’ is optimized to work on very large json files (35 MiB+).
@@ -117,10 +130,12 @@ This optimization is achieved by
 a. parsing as little of the file as necessary to find the path and
 b. leveraging C code whenever possible.
 
+By default, this command is bound to `C-x C-p`.
+
 #### jsonian-edit-string
 
 Edit the string at point in another buffer. The string is expanded when being edited and
-collapsed back upon exit. For example, editing the string "json\tescapes\nare\nannoying"
+collapsed back upon exit. For example, editing the string `"json\tescapes\nare\nannoying"`
 will drop you into a buffer containing:
 
 ```
@@ -131,6 +146,27 @@ annoying
 
 When you return from the buffer, the string is collapsed back into its escaped form
 (preserving edits).
+
+By default, this command is bound to `C-x C-s`.
+
+#### jsonian-enclosing-item
+
+Move point to the enclosing node. For example:
+
+``` json
+[
+    { "foo": { "fizz": 3, "buzz": 5 } },
+    { "bar": { "fizz": 3, "buzz": 5 } }
+]
+```
+
+If the point started on the `5`, calling `jsonian-enclosing-item` would move
+point to the `"` at the beginning of `"foo"`. Calling it again would move the
+point to the first `{` on the second line. Calling it a final time would move
+the point to the opening `[`.
+
+By default, this function is bound to `C-x C-e`.
+
 
 #### jsonian-enable-flycheck
 
