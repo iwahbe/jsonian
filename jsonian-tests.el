@@ -126,8 +126,7 @@
     (should-point 49)
     (jsonian--traverse-forward 3)
     (should-point 64)
-    (should-not (jsonian--traverse-forward))
-    (should-point 64)))
+    (should-not (jsonian--traverse-forward))))
 
 (ert-deftest jsonian-indent-leave-alone ()
   "Load `indent1' and indent each line.

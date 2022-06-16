@@ -173,8 +173,9 @@ does not have face EXPECTED-FACE, the string is manually parsed."
 If the string is highlighted with the `face' EXPECTED-FACE, use
 the face to define the scope of the string.  Otherwise the string
 is manually parsed."
-  (unless (= (char-after) ?\")
-    (error "`jsonian--forward-string': Expected to start at \""))
+  (unless (eq (char-after) ?\")
+    (error "`jsonian--forward-string': Expected to start at \", instead found %s"
+           (if (char-after) (char-to-string (char-after)) "EOF")))
   (let ((match (and expected-face (jsonian--get-font-lock-region nil nil 'face expected-face))))
     (if match
         (progn (goto-char (cdr match)) match)
@@ -637,6 +638,7 @@ JSON font lock syntactic face function."
       (unless (bobp) (backward-char))
       result)))
 
+;;;###autoload
 (defun jsonian-enclosing-item (&optional arg)
   "Move point to the item enclosing the current point.
 If ARG is not nil, move to the ARGth enclosing item."
@@ -664,37 +666,110 @@ If ARG is not nil, move to the ARGth enclosing item."
             (forward-char)))))
     t))
 
+;;;###autoload
+(defun jsonian-find ()
+  "Navigate to a item in a JSON document."
+  (interactive)
+  (let* ((sibs (jsonian--find-siblings))
+         (map (make-hash-table
+               :test 'equal
+               :size (length sibs)))
+         (keys (mapcar (lambda (kv)
+                         (puthash (car kv) (cdr kv) map)
+                         (car kv))
+                       sibs))
+         (selection (completing-read "Select element: " keys nil t)))
+    (when selection
+      (goto-char (gethash selection map)))))
+
+(defun jsonian--find-completion (str predicate type)
+  "The function passed to `completing-read' to handle navigating the JSON document.
+STR is the string to be completed.
+PREDICATE is a function by which to filter possible matches.
+TYPE is a flag specifying the type of completion."
+  ;; See 21.6.7 Programmed Completion in the manual for more details
+  ;; (elisp)Programmed Completion
+  ;; TODO
+  (ignore str)
+  (ignore predicate)
+  (cond
+   ((eq type nil) (error "`nil' mode not supported"))
+   ((eq type t) (error "`t' mode not supported"))
+   ((eq type 'lambda) (error "`lambda' mode not supported"))
+   ((eq (car-safe type) 'boundaries) (error "`boundaries' mode not supported"))
+   ;; We specify an empty alist right now.
+   ((eq type 'metadata) (cons 'metadata nil))))
+
+(defun jsonian--parse-path (str)
+  "Parse STR as a JSON path.
+A list of elements is returned."
+  (unless (stringp str) (error "`jsonian--parse-path': Input not a string"))
+  (cond
+   ((string= str "") nil)
+   ((string-match "^\[[0-9]+\]" str)
+    (cons (string-to-number (substring str 1 (1- (match-end 0))))
+          (jsonian--parse-path (substring str (match-end 0)))))
+   ((string-match-p (regexp-quote "[\"") str)
+    (let ((s (with-temp-buffer
+               (insert (substring str 1)) (goto-char (point-min))
+               (buffer-substring 2 (1- (cdr (jsonian--forward-string)))))))
+      (cons s (jsonian--parse-path (substring str (+ (length s) 4))))))
+   ((string= "." (substring str 0 1))
+    (if (not (string-match "[\.\[]" (substring str 1)))
+        ;; We have found nothing to indicate another sequence, so this is the last node
+        (list (substring str 1))
+      (cons (substring str 1 (match-end 0)) (jsonian--parse-path (substring str (match-end 0))))))
+   (t (user-error "Unexpected input: %s" str))))
+
+(defun jsonian--find-siblings ()
+  "Return a list of the elements in the enclosing scope.
+Elements are of the form ( key . point ) where key is either a
+string or a integer.  Point is a char location."
+  (save-excursion
+    ;; Go to the beginning of the enclosing item, if we are at the end of the
+    ;; buffer, there is nothing there, so stop.
+    (when (and (jsonian--enclosing-item) (not (eobp)))
+      (forward-char) ;; Go the the beginning of the first element in the enclosing object
+      (jsonian--forward-whitespace)
+      ;; If we are at the end of the object, stop
+      (unless (or (eq (char-after) ?\})
+                  (eq (char-after) ?\]))
+        (let ((elements
+               (list (cons
+                      (if-let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp))))
+                          (buffer-substring-no-properties (point) end)
+                        0)
+                      (point)))))
+          (while (jsonian--traverse-forward)
+            (setq elements (cons
+                            (cons (if-let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp))))
+                                      (buffer-substring-no-properties (point) end)
+                                    (length elements))
+                                  (point))
+                            elements)))
+          elements)))))
+
 (defun jsonian--traverse-forward (&optional n)
-  "Go forward N elements in a list or array."
-  (let ((n (or n 1))
-        (start (point))
-        done)
-    (when (< n 0) (error "N must be positive"))
+  "Go forward N elements in an object or array."
+  (let ((n (or n 1)) done)
+    (when (<= n 0) (error "N must be positive"))
     (jsonian--correct-starting-point)
+    (when (eq (char-after) ?,) (setq n (1+ n)))
     (while (and (> n 0) (not done))
       (jsonian--forward-whitespace)
       (cond
-       ((= (char-after) ?\") (jsonian--forward-string 'font-lock-string-face))
-       ((= (char-after) ?:)
-        (forward-char)
-        (jsonian--forward-whitespace)
-        (jsonian--forward-string 'font-lock-keyword-face))
+       ((= (char-after) ?\") (jsonian--forward-string))
+       ((= (char-after) ?:) (forward-char))
        ((= (char-after) ?t) (jsonian--forward-true))
        ((= (char-after) ?f) (jsonian--forward-false))
        ((= (char-after) ?\{) (forward-list))
        ((= (char-after) ?\[) (forward-list))
-       ((and (>= (char-after) ?0) (<= (char-after) ?9))
-        (forward-char))
-       ((= (char-after) ?,) (setq n (1- n))
-        (forward-char))
-       ((or (= (char-after) ?\])
-            (= (char-after) ?\}))
-        (setq done t))
+       ((and (>= (char-after) ?0) (<= (char-after) ?9)) (jsonian--forward-number))
+       ((= (char-after) ?,) (setq n (1- n)) (forward-char) (jsonian--forward-whitespace))
+       ((or (= (char-after) ?\]) (= (char-after) ?\})) (setq done t))
        (t (user-error "Unexpected character '%c'" (char-after)))))
     (jsonian--forward-whitespace)
-    (if (= n 0)
-        t
-      (goto-char start) nil)))
+    (not done)))
 
 (defun jsonian-beginning-of-defun (&optional arg)
   "Move to the beginning of the smallest object/array enclosing `POS'.
@@ -781,6 +856,7 @@ number of spaces is determined by
 (define-key jsonian-mode-map (kbd "C-c C-p") #'jsonian-path)
 (define-key jsonian-mode-map (kbd "C-c C-s") #'jsonian-edit-string)
 (define-key jsonian-mode-map (kbd "C-c C-e") #'jsonian-enclosing-item)
+(define-key jsonian-mode-map (kbd "C-c C-f") #'jsonian-find)
 
 (add-to-list 'hs-special-modes-alist '(jsonian-mode "{" "}" "/[*/]" nil))
 
