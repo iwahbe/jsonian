@@ -161,5 +161,29 @@ We test that all lines are unchanged"
      ("[squares" . nil)
      ("other]" . nil))))
 
+(ert-deftest jsonian--parse-path ()
+  "Check that we can parse paths"
+  (mapc (lambda (x)
+          (should (equal (jsonian--parse-path (car x)) (cdr x))))
+        '(("." . (""))
+          ("" . ())
+          (".foo.bar" . ("foo" "bar"))
+          (".foo.bar." . ("foo" "bar" ""))
+          ("[0].foo.bar." . (0 "foo" "bar" ""))
+          ("[\"0\"].foo.bar." . ("0" "foo" "bar" ""))
+          ("[\"foo\"][123][\"bar\"]" . ("foo" 123 "bar")))))
+
+(ert-deftest jsonian--completing-boundary ()
+  "Check that completing boundary works as expected.
+Specifically, we need to comply with what `completion-boundaries' describes."
+  (mapc (lambda (x)
+          (let ((result (jsonian--completing-boundary (caar x) (cdar x))))
+            (should (equal result (cdr x)))))
+        '((("foo.bar"     . ".baz")    . (4 . 0))
+          (("foo.bar."    . ".baz")    . (8 . 0))
+          ((".bar"        . "baz")     . (1 . 3))
+          (("foo.bar"     . "")        . (4 . 0))
+          ((".foo[\"fizz" . "buzz\"]") . (6 . 5)))))
+
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here

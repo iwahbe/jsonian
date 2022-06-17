@@ -26,11 +26,11 @@
 (require 'seq)
 
 (defcustom jsonian-ignore-font-lock nil
-    "Prevent `font-lock' based optimizations.
+  "Prevent `font-lock' based optimizations.
 Don't use `font-lock-string-face' and `font-lock-keyword-face' to
 determine string and key values respectively."
-    :type 'boolean
-    :group 'jsonian)
+  :type 'boolean
+  :group 'jsonian)
 
 (defcustom jsonian-spaces-per-indentation 4
   "The number of spaces each increase in indentation level indicates."
@@ -418,7 +418,7 @@ Otherwise it will parse back to the beginning of the file."
               ;; Boolean literal: false
               ((eq (char-before) ?e) (jsonian--backward-false))
               ((bobp) (cl-return nil))
-              (t  (user-error "Unexpected character '%s'" (if (bobp) "BOB" (format "%c" (char-before)))))))))
+              (t  (user-error "`jsonian--path': Unexpected character '%s'" (if (bobp) "BOB" (format "%c" (char-before)))))))))
 
 (defun jsonian--get-string-region (type &optional pos buffer)
   "Find the bounds of the string at POS in BUFFER.
@@ -565,7 +565,7 @@ This means replacing '\\n' with '\n' and '\\t' with '\t'."
 
     ;; Kill the display buffer
     (if kill-window
-      (kill-buffer-and-window)
+        (kill-buffer-and-window)
       (kill-current-buffer))
     (select-window (get-buffer-window back-buffer))
     (read-only-mode -1)))
@@ -590,7 +590,7 @@ It should *not* be toggled manually."
 
 (defvar jsonian-syntax-table
   (let ((s (make-syntax-table)))
-        ;; Objects
+    ;; Objects
     (modify-syntax-entry ?\{ "(}" s)
     (modify-syntax-entry ?\} "){" s)
     ;; Arrays
@@ -668,12 +668,16 @@ If ARG is not nil, move to the ARGth enclosing item."
             (forward-char)))))
     t))
 
+(defvar jsonian--find-buffer nil
+  "The buffer in which `jsonian-find' is currently operating in.")
+
 ;;;###autoload
 (defun jsonian-find ()
   "Navigate to a item in a JSON document."
   (interactive)
+  (setq jsonian--find-buffer (current-buffer))
   (if-let ((selection
-            (completing-read "Select element: " #'jsonian--find-completion nil t
+            (completing-read "Select Element: " #'jsonian--find-completion nil t
                              (save-excursion
                                (jsonian--correct-starting-point)
                                (jsonian--display-path (jsonian--reconstruct-path (jsonian--path t nil)) t)))))
@@ -687,21 +691,20 @@ PREDICATE is a function by which to filter possible matches.
 TYPE is a flag specifying the type of completion."
   ;; See 21.6.7 Programmed Completion in the manual for more details
   ;; (elisp)Programmed Completion
-  (cond
-   ((eq type nil)
-    (message "Triggered nil completion for str = %s" str)
-    (jsonian--completing-nil (jsonian--parse-path str) predicate))
-   ((eq type t)
-    (message "Triggered t completion for str = %s" str)
-    (jsonian--completing-t (jsonian--parse-path str) predicate))
-   ((eq type 'lambda)
-    (message "Triggered 'lambda completion for str = %s" str)
-    (when (jsonian--valid-path-p (jsonian--parse-path str)) t))
-   ((eq (car-safe type) 'boundaries)
-    (message "Triggered 'boundaries completion for str = '%s', suffix = '%s'" str (cdr type))
-    (cons 'boundaries (jsonian--completing-boundary str (cdr type))))
-   ;; We specify an empty alist right now.
-   ((eq type 'metadata) (cons 'metadata nil))))
+  (with-current-buffer jsonian--find-buffer
+    (cond
+     ((eq type nil)
+      (jsonian--completing-nil (jsonian--parse-path str) predicate))
+     ((eq type t)
+      (jsonian--completing-t (jsonian--parse-path str) predicate))
+     ((eq type 'lambda)
+      (when (jsonian--valid-path-p (jsonian--parse-path str)) t))
+     ((eq (car-safe type) 'boundaries)
+      (cons 'boundaries (jsonian--completing-boundary str (cdr type))))
+     ;; We specify an empty alist right now.
+     ((eq type 'metadata)
+      (cons 'metadata nil))
+     (t (error "Unexpected type `%s'" type)))))
 
 (defun jsonian--completing-t (path predicate)
   "Compute the set of all possible completions for PATH that satisfy PREDICATE."
@@ -709,11 +712,13 @@ TYPE is a flag specifying the type of completion."
       (save-excursion
         (goto-char parent-loc)
         (let ((result (seq-map
-          (lambda (x)
-            (if (numberp (car x))
-                (number-to-string (car x))
-              (car x)))
-          (jsonian--find-siblings))))
+                       (lambda (x)
+                         ;; We trim of the leading "[" or "." since it already exists
+                         (let ((path (jsonian--display-path (list (car x)) t)))
+                             (if (> (length path) 0)
+                                 (substring path 1)
+                               path)))
+                       (jsonian--find-siblings))))
           (if predicate
               (seq-filter predicate result)
             result)))))
@@ -752,11 +757,11 @@ of all matches otherwise."
       (cond
        ((not result) nil)
        ((= 1 (length result)) t)
-       (t (jsonian--display-path
-           (append
-            (butlast path)
-            (list (jsonian--longest-common-substring (mapcar #'car result))))
-           t))))))
+       (t (substring
+           ;; We trim of the leading "[" or "." since it already exists
+           (jsonian--display-path
+            (list (jsonian--longest-common-substring (mapcar #'car result))) t)
+           1))))))
 
 (defun jsonian--longest-common-substring (strings)
   "Find the longest common sub-string among the list STRINGS."
@@ -777,29 +782,33 @@ of all matches otherwise."
 Here STR represents the completing string and SUFFIX the string after point."
   ;; We first check if we are inside a string segment: ["INSIDE"]
   (with-temp-buffer
-   (insert str suffix)
-   (goto-char (length str))
-   (if-let ((str-start (jsonian--pos-in-stringp)))
-       (cons str-start (progn (jsonian--string-scan-forward) (point)))
-     ;; Not in a string, so we can look backward and forward for dividing chars
-     ;; `?\[', `?\]', `?\"' and `?.'
-     (cons
-      (save-excursion
-        (while (and
-                (char-before)
-                (not (eq (char-before) ?\[))
-                (not (eq (char-before) ?\"))
-                (not (eq (char-before) ?.)))
-          (backward-char))
-        (point))
-      (- (progn (while (and
-                     (char-after)
-                     (not (eq (char-after) ?\]))
-                     (not (eq (char-after) ?\"))
-                     (not (eq (char-after) ?.)))
-               (forward-char))
-             (point))
-         (length str))))))
+    (insert str suffix)
+    (goto-char (1+ (length str)))
+    (if-let ((str-start (jsonian--pos-in-stringp)))
+        (cons
+         str-start
+         (progn
+           (jsonian--string-scan-forward)
+           (-  (point) (length str) 1)))
+      ;; Not in a string, so we can look backward and forward for dividing chars
+      ;; `?\[', `?\]', `?\"' and `?.'
+      (cons
+       (save-excursion
+         (while (and
+                 (char-before)
+                 (not (eq (char-before) ?\[))
+                 (not (eq (char-before) ?\"))
+                 (not (eq (char-before) ?.)))
+           (backward-char))
+         (1- (point)))
+       (- (progn (while (and
+                         (char-after)
+                         (not (eq (char-after) ?\]))
+                         (not (eq (char-after) ?\"))
+                         (not (eq (char-after) ?.)))
+                   (forward-char))
+                 (point))
+          (length str) 1)))))
 
 (defun jsonian--valid-path-p (path)
   "Check if PATH is a valid path in the current JSON buffer.
@@ -910,7 +919,7 @@ string or a integer.  Point is a char location."
        ((and (>= (char-after) ?0) (<= (char-after) ?9)) (jsonian--forward-number))
        ((eq (char-after) ?,) (setq n (1- n)) (forward-char) (jsonian--forward-whitespace))
        ((or (eq (char-after) ?\]) (= (char-after) ?\})) (setq done t))
-       (t (user-error "Unexpected character '%c'" (char-after)))))
+       (t (user-error "`jsonian--traverse-forward': Unexpected character '%c'" (char-after)))))
     (jsonian--forward-whitespace)
     (not done)))
 
