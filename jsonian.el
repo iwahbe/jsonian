@@ -201,7 +201,7 @@ result is returned if a string beginning was found."
           (if escaped
               (when (not (bobp)) (backward-char))
             (goto-char (1- anchor))
-            (setq done t)))))
+            (setq done (point))))))
     done))
 
 (defun jsonian--string-scan-forward (&optional at-beginning)
@@ -672,17 +672,13 @@ If ARG is not nil, move to the ARGth enclosing item."
 (defun jsonian-find ()
   "Navigate to a item in a JSON document."
   (interactive)
-  (let* ((sibs (jsonian--find-siblings))
-         (map (make-hash-table
-               :test 'equal
-               :size (length sibs)))
-         (keys (mapcar (lambda (kv)
-                         (puthash (car kv) (cdr kv) map)
-                         (car kv))
-                       sibs))
-         (selection (completing-read "Select element: " keys nil t)))
-    (when selection
-      (goto-char (gethash selection map)))))
+  (if-let ((selection
+            (completing-read "Select element: " #'jsonian--find-completion nil t
+                             (save-excursion
+                               (jsonian--correct-starting-point)
+                               (jsonian--display-path (jsonian--reconstruct-path (jsonian--path t nil)) t)))))
+      ;; We know that the path is valid since we chose it from the list of valid paths presented
+      (goto-char (jsonian--valid-path-p (jsonian--parse-path selection)))))
 
 (defun jsonian--find-completion (str predicate type)
   "The function passed to `completing-read' to handle navigating the JSON document.
@@ -691,16 +687,119 @@ PREDICATE is a function by which to filter possible matches.
 TYPE is a flag specifying the type of completion."
   ;; See 21.6.7 Programmed Completion in the manual for more details
   ;; (elisp)Programmed Completion
-  ;; TODO
-  (ignore str)
-  (ignore predicate)
   (cond
-   ((eq type nil) (error "`nil' mode not supported"))
-   ((eq type t) (error "`t' mode not supported"))
-   ((eq type 'lambda) (jsonian--valid-path-p (jsonian--parse-path str)))
-   ((eq (car-safe type) 'boundaries) (error "`boundaries' mode not supported"))
+   ((eq type nil)
+    (message "Triggered nil completion for str = %s" str)
+    (jsonian--completing-nil (jsonian--parse-path str) predicate))
+   ((eq type t)
+    (message "Triggered t completion for str = %s" str)
+    (jsonian--completing-t (jsonian--parse-path str) predicate))
+   ((eq type 'lambda)
+    (message "Triggered 'lambda completion for str = %s" str)
+    (when (jsonian--valid-path-p (jsonian--parse-path str)) t))
+   ((eq (car-safe type) 'boundaries)
+    (message "Triggered 'boundaries completion for str = '%s', suffix = '%s'" str (cdr type))
+    (cons 'boundaries (jsonian--completing-boundary str (cdr type))))
    ;; We specify an empty alist right now.
    ((eq type 'metadata) (cons 'metadata nil))))
+
+(defun jsonian--completing-t (path predicate)
+  "Compute the set of all possible completions for PATH that satisfy PREDICATE."
+  (if-let ((parent-loc (jsonian--valid-path-p (butlast path))))
+      (save-excursion
+        (goto-char parent-loc)
+        (let ((result (seq-map
+          (lambda (x)
+            (if (numberp (car x))
+                (number-to-string (car x))
+              (car x)))
+          (jsonian--find-siblings))))
+          (if predicate
+              (seq-filter predicate result)
+            result)))))
+
+(defun jsonian--completing-nil (path &optional predicate)
+  "The nil component of `jsonian--find-completion'.
+PATH is a a list of path segments.  PREDICATE is a function that
+filters values It takes a string as argument.  According to the
+docs: The function should return nil if there are no matches; it
+should return t if the specified string is a unique and exact
+match; and it should return the longest common prefix substring
+of all matches otherwise."
+  (save-excursion
+    (let* ((final (car-safe (last path)))
+           (final-str (if final
+                          (if (numberp final)
+                              (number-to-string final)
+                            final)
+                        ""))
+           (result
+            (if-let ((parent-loc (jsonian--valid-path-p (butlast path))))
+                (save-excursion
+                  (goto-char parent-loc)
+                  (seq-filter
+                   (lambda (kv)
+                     (let ((k (if (car kv)
+                                  (if (numberp (car kv))
+                                      (number-to-string (car kv))
+                                    (car kv)))))
+                       (string= final-str (substring k 0 (min (length final-str) (length k))))))
+                   (jsonian--find-siblings))))))
+      (setq result
+            (if predicate
+                (seq-filter predicate result)
+              result))
+      (cond
+       ((not result) nil)
+       ((= 1 (length result)) t)
+       (t (jsonian--display-path
+           (append
+            (butlast path)
+            (list (jsonian--longest-common-substring (mapcar #'car result))))
+           t))))))
+
+(defun jsonian--longest-common-substring (strings)
+  "Find the longest common sub-string among the list STRINGS."
+  (let* ((sorted (sort strings #'string<))
+         (first (car-safe sorted))
+         (last (car-safe (last sorted)))
+         (i 0) result)
+    (while (and (< i (length first))
+                (< i (length last))
+                (not result))
+      (if (= (aref first i) (aref last i))
+          (setq i (1+ i))
+        (setq result t)))
+    (substring first 0 i)))
+
+(defun jsonian--completing-boundary (str suffix)
+  "Calculate the completion boundary for `jsonian--find-completion'.
+Here STR represents the completing string and SUFFIX the string after point."
+  ;; We first check if we are inside a string segment: ["INSIDE"]
+  (with-temp-buffer
+   (insert str suffix)
+   (goto-char (length str))
+   (if-let ((str-start (jsonian--pos-in-stringp)))
+       (cons str-start (progn (jsonian--string-scan-forward) (point)))
+     ;; Not in a string, so we can look backward and forward for dividing chars
+     ;; `?\[', `?\]', `?\"' and `?.'
+     (cons
+      (save-excursion
+        (while (and
+                (char-before)
+                (not (eq (char-before) ?\[))
+                (not (eq (char-before) ?\"))
+                (not (eq (char-before) ?.)))
+          (backward-char))
+        (point))
+      (- (progn (while (and
+                     (char-after)
+                     (not (eq (char-after) ?\]))
+                     (not (eq (char-after) ?\"))
+                     (not (eq (char-after) ?.)))
+               (forward-char))
+             (point))
+         (length str))))))
 
 (defun jsonian--valid-path-p (path)
   "Check if PATH is a valid path in the current JSON buffer.
@@ -741,7 +840,8 @@ need to be a leaf path."
         (setq path (cdr path)))
       ;; We reject if we have noticed a failure or exited early by hitting a
       ;; leaf node
-      (and (not failed) (not path)))))
+      (when (and (not failed) (not path))
+        (point)))))
 
 (defun jsonian--parse-path (str)
   "Parse STR as a JSON path.
@@ -755,7 +855,7 @@ A list of elements is returned."
    ((string-match-p (regexp-quote "[\"") str)
     (let ((s (with-temp-buffer
                (insert (substring str 1)) (goto-char (point-min))
-               (buffer-substring 2 (1- (cdr (jsonian--forward-string)))))))
+               (buffer-substring-no-properties 2 (1- (cdr (jsonian--forward-string)))))))
       (cons s (jsonian--parse-path (substring str (+ (length s) 4))))))
    ((string= "." (substring str 0 1))
     (if (not (string-match "[\.\[]" (substring str 1)))
