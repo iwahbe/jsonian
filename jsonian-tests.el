@@ -193,6 +193,8 @@ We test that all lines are unchanged"
           (".foo[1"           . ("foo" 1))
           (".foo[\"f"         . ("foo" "f"))
           (".foo[\" e"        . ("foo" " e"))
+          (".foo["            . ("foo" ""))
+          (".foo[\""          . ("foo" ""))
           (".foo. e"          . ("foo" "e"))
           (".foo.e "          . ("foo" "e"))
           (".foo.bar."        . ("foo" "bar" ""))
@@ -210,7 +212,8 @@ Specifically, we need to comply with what `completion-boundaries' describes."
           (("foo.bar."    . "")        . (8 . 0))
           ((".bar"        . "baz")     . (1 . 3))
           (("foo.bar"     . "")        . (4 . 0))
-          ((".foo[\"fizz" . "buzz\"]") . (6 . 5)))))
+          ((".foo[\"fizz" . "buzz\"]") . (6 . 5))
+          ((".foo[" . ""             ) . (5 . 0)))))
 
 (ert-deftest jsonian--array-find-children ()
   "Check that we can find the children of arrays correctly."

@@ -176,12 +176,11 @@ is manually parsed."
   (unless (eq (char-after) ?\")
     (error "`jsonian--forward-string': Expected to start at \", instead found %s"
            (if (char-after) (char-to-string (char-after)) "EOF")))
-  (let ((match (and expected-face (jsonian--get-font-lock-region nil nil 'face expected-face))))
-    (if match
-        (progn (goto-char (cdr match)) match)
-      (setq match (point))
-      (forward-char)
-      (jsonian--string-scan-forward t)
+  (if-let (match (and expected-face (jsonian--get-font-lock-region nil nil 'face expected-face)))
+      (progn (goto-char (cdr match)) match)
+    (setq match (point))
+    (forward-char)
+    (when (jsonian--string-scan-forward t)
       (cons match (point)))))
 
 (defun jsonian--string-scan-back ()
@@ -309,7 +308,7 @@ If PRETTY is non-nil, format for human readable."
    path ""))
 
 (defun jsonian--simple-path-segment-p (segment)
-  "If SEGMENT can be displayed simply, or if it needs to be escaped.
+  "If the string SEGMENT can be displayed simply, or if it needs to be escaped.
 A segment is considered simple if and only if it does not contain any
 - blanks
 - period
@@ -463,10 +462,10 @@ PROPERTY defaults to `face'."
 
 (cl-defstruct jsonian--edit-return
   "Information necessary to return from `jsonian--edit-mode'."
-  match          ;; The (start . end) region of text being operated on
-  back-buffer    ;; The buffer to return back to
-  overlay        ;; The overlay used to highlight `match' text
-  delete-window) ;; If the hosting `window' should be deleted upon exit.
+  (match         nil :documentation "The (start . end) region of text being operated on.")
+  (back-buffer   nil :documentation "The buffer to return back to.")
+  (overlay       nil :documentation "The overlay used to highlight `match' text.")
+  (delete-window nil :documentation "If the hosting `window' should be deleted upon exit."))
 
 (defun jsonian--replace-text-in (start end text &optional buffer)
   "Set the content of the region (START to END) to TEXT in BUFFER.
@@ -782,7 +781,6 @@ TYPE is a flag specifying the type of completion."
       (when (jsonian--valid-path (jsonian--parse-path str)) t))
      ((eq (car-safe type) 'boundaries)
       (cons 'boundaries (jsonian--completing-boundary str (cdr type))))
-     ;; We specify an empty alist right now.
      ((eq type 'metadata)
       (cons 'metadata (list
                        (cons 'display-sort-function
@@ -793,11 +791,21 @@ TYPE is a flag specifying the type of completion."
   "The completing sort function for `jsonian--find-completion'.
 PREFIX is the string to compare against.
 PATHS is the list of returned paths."
-  (if-let (prefix (car-safe (last (jsonian--parse-path prefix))))
+  (if-let* ((segment (car-safe (last (jsonian--parse-path prefix))))
+            (prefix (jsonian--display-segment-end segment)))
       (sort
        (seq-filter (apply-partially #'string-prefix-p prefix) paths)
        (lambda (x y) (< (string-distance prefix x) (string-distance prefix y))))
     paths))
+
+(defun jsonian--display-segment-end (segment)
+  "Displays SEGMENT with it's closer.
+For example the segment \"foo\" ends as \"foo\", while 3 ends as \"3]\".
+The segment \"foo bar\" would end as \"foo bar\\\"]."
+  (cond
+   ((numberp segment) (format "%d]" segment))
+   ((jsonian--simple-path-segment-p segment) segment)
+   (t (format "[\"%s\"]" segment))))
 
 (defun jsonian--at-collection (pos)
   "Check if POS is before a collection."
@@ -972,19 +980,18 @@ A list of elements is returned."
   (unless (stringp str) (error "`jsonian--parse-path': Input not a string"))
   (cond
    ((string= str "") nil)
-   ((string-match "^\[[0-9]+\]" str)
+   ((string-match "^\\[[0-9]+\]" str)
     (cons (string-to-number (substring str 1 (1- (match-end 0))))
           (jsonian--parse-path (substring str (match-end 0)))))
    ((string-match-p "^\\[\"" str)
     (if-let* ((str-end (with-temp-buffer
                          (insert (substring str 1)) (goto-char (point-min))
-                         (jsonian--forward-string)
-                         ;; Found a valid string
-                         (when (eq (char-before) ?\") (point))))
+                         (when (jsonian--forward-string)
+                           (point))))
               (str-length (- str-end 3)))
         (cons (substring-no-properties str 2 (1- str-end))
               (jsonian--parse-path (substring str (+ str-length 4))))
-      (cons (substring-no-properties str 2) nil)))
+      (cons (string-trim-left str "\\[\"") nil)))
    ((string= "." (substring str 0 1))
     (if (not (string-match "[\.\[]" (substring str 1)))
         ;; We have found nothing to indicate another sequence, so this is the last node
@@ -996,7 +1003,7 @@ A list of elements is returned."
     ;; We have found a leading whitespace not part of a segment, so ignore it.
     (jsonian--parse-path (substring str 1)))
    ;; There are no more fully valid parses, so look at invalid parses
-   ((string-match "^\[[0-9]+$" str)
+   ((string-match "^\\[[0-9]+$" str)
     (cons (string-to-number (substring str 1)) nil))
    ((string-match-p "^\\[" str)
     ;; We have found a string starting with [, it isn't a number, so parse it
