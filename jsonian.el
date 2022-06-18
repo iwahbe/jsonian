@@ -693,9 +693,10 @@ If ARG is not nil, move to the ARGth enclosing item."
   (children nil :documentation "A list of the locations of child nodes.
 If non-nil, the child nodes should exist in cache.
 If the node is a leaf node, CHILDREN may be set to `'leaf'.")
-  (segment nil :documentation "The last segment in the path to this node."))
+  (segment nil :documentation "The last segment in the path to this node.")
+  (type nil :documentation "The type of the node (as a string), used for display purposes."))
 
-(cl-defun jsonian--cache-node (location &key path children segment)
+(cl-defun jsonian--cache-node (location &key path children segment type)
   "Cache information about a node.
 Accepts the following keys:
 LOCATION defines the primary key in the cache.
@@ -719,6 +720,8 @@ supplied, then segment should equal (car (butlast path))."
       (setf (jsonian--cached-node-segment existing) segment)
     (if path
         (setf (jsonian--cached-node-segment existing) (car (butlast path)))))
+  (when type
+    (setf (jsonian--cached-node-type type) type))
   (puthash location existing (jsonian--cache-locations jsonian--cache))))
 
 (defun jsonian--ensure-cache ()
@@ -784,8 +787,41 @@ TYPE is a flag specifying the type of completion."
      ((eq type 'metadata)
       (cons 'metadata (list
                        (cons 'display-sort-function
-                             (apply-partially #'jsonian--completing-sort str)))))
+                             (apply-partially #'jsonian--completing-sort str))
+                       (cons 'affixation-function
+                             (apply-partially #'jsonian--completing-affixation str jsonian--cache)))))
      (t (error "Unexpected type `%s'" type)))))
+
+(defun jsonian--completing-affixation (prefix cache paths)
+  "Map each element in PATHS to (list <path> <type> <value>).
+<type> and <value> may be nil if the necessary information is not cached."
+  (jsonian--ensure-cache)
+  (let ((max-value (+ 8 (seq-reduce #'max (seq-map #'length paths) 0))))
+    (mapcar (lambda (path)
+              (let* ((full-path (append
+                                 (butlast (jsonian--parse-path prefix))
+                                 (jsonian--parse-path
+                                  (if (string-match-p "^[0-9]\\]$" path)
+                                      (concat "[" path)
+                                    path))))
+                     (node (gethash
+                            (gethash
+                             full-path
+                             (jsonian--cache-paths cache))
+                            (jsonian--cache-locations cache))))
+                (list
+                 path
+                 (if node
+                     (concat (or (jsonian--cached-node-type node) "f") " ")
+                   "nil")
+                 (jsonian--pad-string (- max-value (length path)) "bar"))))
+            paths)))
+
+(defun jsonian--pad-string (len string)
+  "Pad STRING to LEN by prefixing it with spaces."
+  (concat
+   (make-string (- len (length string)) ?\ )
+   string))
 
 (defun jsonian--completing-sort (prefix paths)
   "The completing sort function for `jsonian--find-completion'.
@@ -928,7 +964,7 @@ need to be a leaf path."
   (save-excursion
     (goto-char (point-min))
     (jsonian--forward-whitespace)
-    (let (failed leaf current-segment)
+    (let (failed leaf current-segment traversed)
       (while (and path (not failed) (not leaf))
         (unless (seq-some
                  (lambda (x)
@@ -937,14 +973,15 @@ need to be a leaf path."
                      (goto-char (cdr x))
                      (save-excursion (setq leaf (not (jsonian--enter-collection))))
                      t))
-                 (jsonian--cached-find-children :segment current-segment))
+                 (jsonian--cached-find-children :segment current-segment :path traversed))
           (setq failed t))
-        (setq current-segment (car path))
-        (setq path (cdr path)))
+        (setq current-segment (car path)
+              traversed (append traversed (list current-segment))
+              path (cdr path)))
       ;; We reject if we have noticed a failure or exited early by hitting a
       ;; leaf node
       (when (and (not failed) (not path))
-        (jsonian--cached-find-children :segment current-segment)
+        (jsonian--cached-find-children :segment current-segment :path traversed)
         (point)))))
 
 (defun jsonian--enter-collection ()
@@ -1016,6 +1053,8 @@ A list of elements is returned."
               (jsonian--parse-path (substring str (match-end 0))))
       ;; Did not find a terminator
       (cons (substring str 1) nil)))
+   ((string-match-p "^[a-zA-Z]" str)
+    (jsonian--parse-path (concat "." str)))
    (t (user-error "Unexpected input: %s" str))))
 
 (defun jsonian--find-children ()
