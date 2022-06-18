@@ -5,7 +5,7 @@
 ;; Author: Ian Wahbe
 ;; URL: https://github.com/iwahbe/jsonian
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "26.1"))
+;; Package-Requires: ((emacs "27.1"))
 
 ;; License:
 
@@ -778,8 +778,19 @@ TYPE is a flag specifying the type of completion."
       (cons 'boundaries (jsonian--completing-boundary str (cdr type))))
      ;; We specify an empty alist right now.
      ((eq type 'metadata)
-      (cons 'metadata nil))
+      (cons 'metadata (list
+                       (cons 'display-sort-function
+                             (-partial #'jsonian--completing-sort str)))))
      (t (error "Unexpected type `%s'" type)))))
+
+(defun jsonian--completing-sort (prefix paths)
+  "The completing sort function for `jsonian--find-completion'."
+  (if-let (prefix (car-safe (last (jsonian--parse-path prefix))))
+      (sort
+       (seq-filter (-partial #'string-prefix-p prefix) paths)
+       (lambda (x y)
+         (< (string-distance prefix x) (string-distance prefix y))))
+    paths))
 
 (defun jsonian--completing-t (path predicate)
   "Compute the set of all possible completions for PATH that satisfy PREDICATE."
