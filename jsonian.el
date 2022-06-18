@@ -942,8 +942,10 @@ If there is no collection after point, return nil."
                (forward-char) ;; go past the `:'
                (jsonian--forward-whitespace)
                ;; and then the underlying value
-               (forward-char)
-               t)
+               (when (or (eq (char-after) ?\[)
+                         (eq (char-after) ?\{))
+                 (forward-char)
+                 t))
       ;; We have found a string that is not a key, so it must
       ;; be a value. That means we have hit a leaf.
       ))
@@ -951,7 +953,7 @@ If there is no collection after point, return nil."
    ((eq (char-after) ?\[) (forward-char) t)
    ;; Progress into the array
    ((eq (char-after) ?\{) (forward-char) t)
-   ;; Whatever else must be a leaf
+   ;; Anything else must be a leaf
    ))
 
 (defun jsonian--parse-path (str)
