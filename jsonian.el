@@ -673,7 +673,7 @@ If ARG is not nil, move to the ARGth enclosing item."
 
 (defvar-local jsonian--cache nil
   "The buffer local cache of known locations in the current JSON file.
-`jsonian--cached-locations' is invalidated on buffer change.")
+`jsonian--cache' is invalidated on buffer change.")
 
 (defun jsonian--handle-change (&rest args)
   "Handle a change in the buffer.
@@ -708,38 +708,42 @@ supplied, then segment should equal (car (butlast path))."
   (jsonian--ensure-cache)
   (when path
     (puthash path location (jsonian--cache-paths jsonian--cache)))
-  (puthash location
-           (make-jsonian--cached-node
-            :children (mapcar #'cdr children)
-            :segment (or segment (when path (car (butlast path)))))
-           (jsonian--cache-locations jsonian--cache)))
+  (let ((existing (or
+                   (gethash location
+                            (jsonian--cache-locations jsonian--cache))
+                   (make-jsonian--cached-node))))
+  (when children
+    (setf (jsonian--cached-node-children existing) (mapcar #'cdr children)))
+  (if segment
+      (setf (jsonian--cached-node-segment existing) segment)
+    (if path
+        (setf (jsonian--cached-node-segment existing) (car (butlast path)))))
+  (puthash location existing (jsonian--cache-locations jsonian--cache))))
 
 (defun jsonian--ensure-cache ()
   "Ensure that a valid cache exists, creating one if necessary."
   (unless jsonian--cache
     (setq jsonian--cache (make-jsonian--cache))))
 
-(cl-defun jsonian--cached-find-siblings (&key path segment)
-  "Call `jsonian--find-siblings' and cache the result.
+(cl-defun jsonian--cached-find-children (&key path segment)
+  "Call `jsonian--find-children' and cache the result.
 If the result is already in the cache, just return it.  PATH and
 SEGMENT refer to the parent.  Either PATH or SEGMENT must be
 supplied."
   (jsonian--ensure-cache)
   (if-let* ((node (gethash (point) (jsonian--cache-locations jsonian--cache)))
             (children (jsonian--cached-node-children node)))
-      (progn
-        (when path
-          (setf (jsonian--cached-node-segment node) (car-safe (butlast path))))
-        (unless (eq children 'leaf)
-          (seq-map
-           (lambda (x)
-             (cons
-              (jsonian--cached-node-segment (gethash x (jsonian--cache-locations jsonian--cache)))
-              x))
-           children)))
-    (let ((result (jsonian--find-siblings)))
+      (unless (eq children 'leaf)
+        (seq-map
+         (lambda (x)
+           (cons
+            (jsonian--cached-node-segment (gethash x (jsonian--cache-locations jsonian--cache)))
+            x))
+         children))
+    (let ((result (jsonian--find-children)))
       (mapc
-       (lambda (kv) (jsonian--cache-node (cdr kv) :segment (car kv) :path (append path (list (car kv)))))
+       (lambda (kv)
+         (jsonian--cache-node (cdr kv) :segment (car kv) :path (when path (append path (list (car kv))))))
        result)
       (jsonian--cache-node (point) :children result :path path :segment segment)
       result)))
@@ -757,7 +761,7 @@ If PATH is supplied, navigate to it."
                                    (jsonian--correct-starting-point)
                                    (jsonian--display-path (jsonian--reconstruct-path (jsonian--path t nil)) t))))))
       ;; We know that the path is valid since we chose it from the list of valid paths presented
-      (goto-char (jsonian--valid-path-p (jsonian--parse-path selection)))))
+      (goto-char (jsonian--valid-path (jsonian--parse-path selection)))))
 
 (defun jsonian--find-completion (str predicate type)
   "The function passed to `completing-read' to handle navigating the JSON document.
@@ -773,7 +777,7 @@ TYPE is a flag specifying the type of completion."
      ((eq type t)
       (jsonian--completing-t (jsonian--parse-path str) predicate))
      ((eq type 'lambda)
-      (when (jsonian--valid-path-p (jsonian--parse-path str)) t))
+      (when (jsonian--valid-path (jsonian--parse-path str)) t))
      ((eq (car-safe type) 'boundaries)
       (cons 'boundaries (jsonian--completing-boundary str (cdr type))))
      ;; We specify an empty alist right now.
@@ -795,20 +799,20 @@ PATHS is the list of returned paths."
 
 (defun jsonian--completing-t (path predicate)
   "Compute the set of all possible completions for PATH that satisfy PREDICATE."
-  (if-let (parent-loc (jsonian--valid-path-p (butlast path)))
-      (save-excursion
-        (goto-char parent-loc)
-        (let ((result (seq-map
-                       (lambda (x)
-                         ;; We trim of the leading "[" or "." since it already exists
-                         (let ((path (jsonian--display-path (list (car x)) t)))
-                           (if (> (length path) 0)
-                               (substring path 1)
-                             path)))
-                       (jsonian--cached-find-siblings :path path))))
-          (if predicate
-              (seq-filter predicate result)
-            result)))))
+  (if-let (parent-loc (jsonian--valid-path (butlast path)))
+    (let ((result (seq-map
+                   (lambda (x)
+                     ;; We trim of the leading "[" or "." since it already exists
+                     (let ((path (jsonian--display-path (list (car x)) t)))
+                       (if (> (length path) 0)
+                           (substring path 1)
+                         path)))
+                   (save-excursion
+                     (goto-char parent-loc)
+                     (jsonian--cached-find-children :path path)))))
+      (if predicate
+          (seq-filter predicate result)
+        result))))
 
 (defun jsonian--completing-nil (path &optional predicate)
   "The nil component of `jsonian--find-completion'.
@@ -827,7 +831,7 @@ of all matches otherwise."
                             final)
                         ""))
            (result
-            (if-let ((parent-loc (jsonian--valid-path-p (butlast path))))
+            (if-let ((parent-loc (jsonian--valid-path (butlast path))))
                 (save-excursion
                   (goto-char parent-loc)
                   (seq-filter
@@ -837,7 +841,7 @@ of all matches otherwise."
                                       (number-to-string (car kv))
                                     (car kv)))))
                        (string= final-str (substring k 0 (min (length final-str) (length k))))))
-                   (jsonian--cached-find-siblings :path path))))))
+                   (jsonian--cached-find-children :path path))))))
       (setq result
             (if predicate
                 (seq-filter predicate result)
@@ -898,7 +902,7 @@ Here STR represents the completing string and SUFFIX the string after point."
                  (point))
           (length str) 1)))))
 
-(defun jsonian--valid-path-p (path)
+(defun jsonian--valid-path (path)
   "Check if PATH is a valid path in the current JSON buffer.
 PATH should be a list of segments.  A path is considered valid if
 it traverses existing structures in the buffer JSON.  It does not
@@ -906,39 +910,49 @@ need to be a leaf path."
   (save-excursion
     (goto-char (point-min))
     (jsonian--forward-whitespace)
-    (forward-char)
-    (let (failed leaf)
+    (let (failed leaf current-segment)
       (while (and path (not failed) (not leaf))
         (unless (seq-some
                  (lambda (x)
                    (when (equal (car x) (car path))
+                     (cl-assert (car x) t "Found nil car")
                      (goto-char (cdr x))
-                     (cond
-                      ;; Progress into the key
-                      ((eq (char-after) ?\")
-                       (if-let ((end (jsonian--pos-in-keyp t)))
-                           (progn (goto-char end)
-                                  (jsonian--forward-whitespace)
-                                  (forward-char) ;; go past the `:'
-                                  (jsonian--forward-whitespace)
-                                  ;; and then the underlying value
-                                  (forward-char))
-                         ;; We have found a string that is not a key, so it must
-                         ;; be a value. That means we have hit a leaf.
-                         (setq leaf t)))
-                      ;; Progress into the object
-                      ((eq (char-after) ?\[) (forward-char))
-                      ;; Progress into the array
-                      ((eq (char-after) ?\{) (forward-char))
-                      (t (setq leaf t)))
+                     (save-excursion (setq leaf (not (jsonian--enter-collection))))
                      t))
-                 (jsonian--cached-find-siblings :segment (car path)))
+                 (jsonian--cached-find-children :segment current-segment))
           (setq failed t))
+        (setq current-segment (car path))
         (setq path (cdr path)))
       ;; We reject if we have noticed a failure or exited early by hitting a
       ;; leaf node
       (when (and (not failed) (not path))
+        (jsonian--cached-find-children :segment current-segment)
         (point)))))
+
+(defun jsonian--enter-collection ()
+  "Move point into the collection after point and return t.
+If there is no collection after point, return nil."
+  ;; TODO: use this to mark the type of the item, then display it during completion
+  (cond
+   ;; Progress into the key
+   ((eq (char-after) ?\")
+    (if-let ((end (jsonian--pos-in-keyp t)))
+        (progn (goto-char end)
+               (jsonian--forward-whitespace)
+               (forward-char) ;; go past the `:'
+               (jsonian--forward-whitespace)
+               ;; and then the underlying value
+               (forward-char)
+               t)
+      ;; We have found a string that is not a key, so it must
+      ;; be a value. That means we have hit a leaf.
+      ))
+   ;; Progress into the object
+   ((eq (char-after) ?\[) (forward-char) t)
+   ;; Progress into the array
+   ((eq (char-after) ?\{) (forward-char) t)
+   ;; Whatever else must be a leaf
+   ))
 
 (defun jsonian--parse-path (str)
   "Parse STR as a JSON path.
@@ -961,33 +975,39 @@ A list of elements is returned."
       (cons (substring str 1 (match-end 0)) (jsonian--parse-path (substring str (match-end 0))))))
    (t (user-error "Unexpected input: %s" str))))
 
+(defun jsonian--find-children ()
+  "Return a list of elements in the collection at point.
+nil is returned if the object at point is not a collection."
+  (save-excursion
+    (when (jsonian--enter-collection)
+      (jsonian--find-siblings))))
+
 (defun jsonian--find-siblings ()
   "Return a list of the elements in the enclosing scope.
 Elements are of the form ( key . point ) where key is either a
 string or a integer.  Point is a char location."
-  (save-excursion
-    ;; Go to the beginning of the enclosing item, if we are at the end of the
-    ;; buffer, there is nothing there, so stop.
-    (when (and (jsonian--enclosing-item) (not (eobp)))
-      (forward-char) ;; Go the the beginning of the first element in the enclosing object
-      (jsonian--forward-whitespace)
-      ;; If we are at the end of the object, stop
-      (unless (or (eq (char-after) ?\})
-                  (eq (char-after) ?\]))
-        (let ((elements
-               (list (cons
-                      (if-let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp t))))
-                          (buffer-substring-no-properties (1+ (point)) (1- end))
-                        0)
-                      (point)))))
-          (while (jsonian--traverse-forward)
-            (setq elements (cons
-                            (cons (if-let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp))))
-                                      (buffer-substring-no-properties (1+ (point)) (1- end))
-                                    (length elements))
-                                  (point))
-                            elements)))
-          elements)))))
+  ;; Go to the beginning of the enclosing item, if we are at the end of the
+  ;; buffer, there is nothing there, so stop.
+  (when (and (jsonian--enclosing-item) (not (eobp)))
+    (forward-char) ;; Go the the beginning of the first element in the enclosing object
+    (jsonian--forward-whitespace)
+    ;; If we are at the end of the object, stop
+    (unless (or (eq (char-after) ?\})
+                (eq (char-after) ?\]))
+      (let ((elements
+             (list (cons
+                    (if-let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp t))))
+                        (buffer-substring-no-properties (1+ (point)) (1- end))
+                      0)
+                    (point)))))
+        (while (jsonian--traverse-forward)
+          (setq elements (cons
+                          (cons (if-let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp))))
+                                    (buffer-substring-no-properties (1+ (point)) (1- end))
+                                  (length elements))
+                                (point))
+                          elements)))
+        elements))))
 
 (defun jsonian--traverse-forward (&optional n)
   "Go forward N elements in an object or array."
