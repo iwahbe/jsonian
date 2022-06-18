@@ -162,16 +162,29 @@ We test that all lines are unchanged"
      ("other]" . nil))))
 
 (ert-deftest jsonian--parse-path ()
-  "Check that we can parse paths"
+  "Check that we can parse paths."
   (mapc (lambda (x)
           (should (equal (jsonian--parse-path (car x)) (cdr x))))
         '(("." . (""))
           ("" . ())
           (".foo.bar" . ("foo" "bar"))
-          (".foo.bar." . ("foo" "bar" ""))
-          ("[0].foo.bar." . (0 "foo" "bar" ""))
-          ("[\"0\"].foo.bar." . ("0" "foo" "bar" ""))
           ("[\"foo\"][123][\"bar\"]" . ("foo" 123 "bar")))))
+
+(ert-deftest jsonian--partial-parse-paths ()
+  "Because `jsonian--parse-path' is used by interactive contexts, we must succeed on partial paths as well."
+  (mapc (lambda (x)
+          (should (equal (jsonian--parse-path (car x)) (cdr x))))
+        '((".bar[1pos][3]"    . ("bar" "1pos" 3))
+          (".bar[1pos]"       . ("bar" "1pos"))
+          (".bar[1pos"        . ("bar" "1pos"))
+          (".foo[1"           . ("foo" 1))
+          (".foo[\"f"         . ("foo" "f"))
+          (".foo[\" e"        . ("foo" " e"))
+          (".foo. e"          . ("foo" "e"))
+          (".foo.e "          . ("foo" "e"))
+          (".foo.bar."        . ("foo" "bar" ""))
+          ("[0].foo.bar."     . (0 "foo" "bar" ""))
+          ("[\"0\"].foo.bar." . ("0" "foo" "bar" "")))))
 
 (ert-deftest jsonian--completing-boundary ()
   "Check that completing boundary works as expected.

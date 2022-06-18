@@ -973,16 +973,38 @@ A list of elements is returned."
    ((string-match "^\[[0-9]+\]" str)
     (cons (string-to-number (substring str 1 (1- (match-end 0))))
           (jsonian--parse-path (substring str (match-end 0)))))
-   ((string-match-p (regexp-quote "[\"") str)
-    (let ((s (with-temp-buffer
-               (insert (substring str 1)) (goto-char (point-min))
-               (buffer-substring-no-properties 2 (1- (cdr (jsonian--forward-string)))))))
-      (cons s (jsonian--parse-path (substring str (+ (length s) 4))))))
+   ((string-match-p "^\\[\"" str)
+    (if-let* ((str-end (with-temp-buffer
+                         (insert (substring str 1)) (goto-char (point-min))
+                         (jsonian--forward-string)
+                         ;; Found a valid string
+                         (when (eq (char-before) ?\") (point))))
+              (str-length (- str-end 3)))
+        (cons (substring-no-properties str 2 (1- str-end))
+              (jsonian--parse-path (substring str (+ str-length 4))))
+      (cons (substring-no-properties str 2) nil)))
    ((string= "." (substring str 0 1))
     (if (not (string-match "[\.\[]" (substring str 1)))
         ;; We have found nothing to indicate another sequence, so this is the last node
-        (list (substring str 1))
-      (cons (substring str 1 (match-end 0)) (jsonian--parse-path (substring str (match-end 0))))))
+        (cons (string-trim (substring str 1)) nil)
+      (cons
+       (string-trim (substring str 1 (match-end 0)))
+       (jsonian--parse-path (substring str (match-end 0))))))
+   ((string= " " (substring str 0 1))
+    ;; We have found a leading whitespace not part of a segment, so ignore it.
+    (jsonian--parse-path (substring str 1)))
+   ;; There are no more fully valid parses, so look at invalid parses
+   ((string-match "^\[[0-9]+$" str)
+    (cons (string-to-number (substring str 1)) nil))
+   ((string-match-p "^\\[" str)
+    ;; We have found a string starting with [, it isn't a number, so parse it
+    ;; like a string
+    (if (string-match "\\]" str 1)
+        ;; Found a terminator
+        (cons (substring str 1 (1- (match-end 0)))
+              (jsonian--parse-path (substring str (match-end 0))))
+      ;; Did not find a terminator
+      (cons (substring str 1) nil)))
    (t (user-error "Unexpected input: %s" str))))
 
 (defun jsonian--find-children ()
