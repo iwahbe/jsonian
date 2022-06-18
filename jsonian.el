@@ -780,16 +780,17 @@ TYPE is a flag specifying the type of completion."
      ((eq type 'metadata)
       (cons 'metadata (list
                        (cons 'display-sort-function
-                             (-partial #'jsonian--completing-sort str)))))
+                             (apply-partially #'jsonian--completing-sort str)))))
      (t (error "Unexpected type `%s'" type)))))
 
 (defun jsonian--completing-sort (prefix paths)
-  "The completing sort function for `jsonian--find-completion'."
+  "The completing sort function for `jsonian--find-completion'.
+PREFIX is the string to compare against.
+PATHS is the list of returned paths."
   (if-let (prefix (car-safe (last (jsonian--parse-path prefix))))
       (sort
-       (seq-filter (-partial #'string-prefix-p prefix) paths)
-       (lambda (x y)
-         (< (string-distance prefix x) (string-distance prefix y))))
+       (seq-filter (apply-partially #'string-prefix-p prefix) paths)
+       (lambda (x y) (< (string-distance prefix x) (string-distance prefix y))))
     paths))
 
 (defun jsonian--completing-t (path predicate)
