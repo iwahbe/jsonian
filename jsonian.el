@@ -456,7 +456,9 @@ PROPERTY defaults to `face'."
                ;; is highlighted in another face.
                (eq (char-before (next-single-property-change pos property)) ?\"))
           (cons
-           (previous-single-property-change pos property)
+           ;; Previous starts looking behind the ", but so we need to include
+           ;; the " in the search. We thus start 1 ahead.
+           (previous-single-property-change (1+ pos) property)
            (next-single-property-change pos property)))))))
 
 (cl-defstruct jsonian--edit-return

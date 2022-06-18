@@ -17,10 +17,23 @@
   (defmacro with-file-and-point (file point &rest body)
     "Open the test file named FILE and go to POINT."
     (declare (indent defun))
-    `(with-temp-buffer
-       (insert-file-contents-literally ,(format "./test-assets/%s.json" file))
-       (goto-char ,point)
-       ,@body)))
+    `(progn
+       (with-temp-buffer
+         (insert-file-contents-literally ,(format "./test-assets/%s.json" file))
+         (jsonian-mode)
+         (goto-char ,point)
+         ,@body)
+       (with-temp-buffer
+         (insert-file-contents ,(format "./test-assets/%s.json" file))
+         (jsonian-mode)
+         (progn ;; Force a font lock on the buffer
+           (setq font-lock-major-mode nil)
+           (syntax-ppss-flush-cache -1)
+           (font-lock-set-defaults)
+           (save-excursion
+             (font-lock-fontify-region (point-min) (point-max))))
+         (goto-char ,point)
+         ,@body))))
 
 (ert-deftest jsonian--display-path ()
   (should (string=
@@ -198,6 +211,13 @@ Specifically, we need to comply with what `completion-boundaries' describes."
           ((".bar"        . "baz")     . (1 . 3))
           (("foo.bar"     . "")        . (4 . 0))
           ((".foo[\"fizz" . "buzz\"]") . (6 . 5)))))
+
+(ert-deftest jsonian--array-find-children ()
+  "Check that we can find the children of arrays correctly."
+  (with-file-and-point "children1" 7
+    (should (equal
+             (jsonian--find-children)
+             '((1 . 58) (0 . 35))))))
 
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here
