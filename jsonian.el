@@ -798,7 +798,7 @@ PATHS is the list of returned paths."
     paths))
 
 (defun jsonian--at-collection (pos)
-  "Check if pos is before a collection."
+  "Check if POS is before a collection."
   (save-excursion
     (goto-char pos)
     (jsonian--enter-collection)))
