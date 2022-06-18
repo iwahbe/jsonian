@@ -978,6 +978,7 @@ If there is no collection after point, return nil."
   "Parse STR as a JSON path.
 A list of elements is returned."
   (unless (stringp str) (error "`jsonian--parse-path': Input not a string"))
+  (setq str (substring-no-properties str))
   (cond
    ((string= str "") nil)
    ((string-match "^\\[[0-9]+\]" str)
@@ -989,8 +990,9 @@ A list of elements is returned."
                          (when (jsonian--forward-string)
                            (point))))
               (str-length (- str-end 3)))
-        (cons (substring-no-properties str 2 (1- str-end))
-              (jsonian--parse-path (substring str (+ str-length 4))))
+        (cons (substring str 2 (1- str-end))
+              (jsonian--parse-path
+               (string-trim-left (substring str (+ str-length 2)) "\"\\]?")))
       (cons (string-trim-left str "\\[\"") nil)))
    ((string= "." (substring str 0 1))
     (if (not (string-match "[\.\[]" (substring str 1)))

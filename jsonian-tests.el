@@ -199,7 +199,8 @@ We test that all lines are unchanged"
           (".foo.e "          . ("foo" "e"))
           (".foo.bar."        . ("foo" "bar" ""))
           ("[0].foo.bar."     . (0 "foo" "bar" ""))
-          ("[\"0\"].foo.bar." . ("0" "foo" "bar" "")))))
+          ("[\"0\"].foo.bar." . ("0" "foo" "bar" ""))
+          (".foo[\"bar\""     . ("foo" "bar")))))
 
 (ert-deftest jsonian--completing-boundary ()
   "Check that completing boundary works as expected.
