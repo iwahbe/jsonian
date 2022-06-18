@@ -797,9 +797,16 @@ PATHS is the list of returned paths."
        (lambda (x y) (< (string-distance prefix x) (string-distance prefix y))))
     paths))
 
+(defun jsonian--at-collection (pos)
+  "Check if pos is before a collection."
+  (save-excursion
+    (goto-char pos)
+    (jsonian--enter-collection)))
+
 (defun jsonian--completing-t (path predicate)
   "Compute the set of all possible completions for PATH that satisfy PREDICATE."
-  (if-let (parent-loc (jsonian--valid-path (butlast path)))
+  (if-let* ((parent-loc (jsonian--valid-path (butlast path)))
+            (is-collection (jsonian--at-collection parent-loc)))
     (let ((result (seq-map
                    (lambda (x)
                      ;; We trim of the leading "[" or "." since it already exists
@@ -831,7 +838,8 @@ of all matches otherwise."
                             final)
                         ""))
            (result
-            (if-let ((parent-loc (jsonian--valid-path (butlast path))))
+            (if-let* ((parent-loc (jsonian--valid-path (butlast path)))
+                      (is-collection (jsonian--at-collection parent-loc)))
                 (save-excursion
                   (goto-char parent-loc)
                   (seq-filter
