@@ -671,16 +671,91 @@ If ARG is not nil, move to the ARGth enclosing item."
 (defvar jsonian--find-buffer nil
   "The buffer in which `jsonian-find' is currently operating in.")
 
+(defvar-local jsonian--cache nil
+  "The buffer local cache of known locations in the current JSON file.
+`jsonian--cached-locations' is invalidated on buffer change.")
+
+(defun jsonian--handle-change (&rest args)
+  "Handle a change in the buffer.
+`jsonian--handle-change' is designed to be called from the
+`before-change-functions' hook.  ARGS is ignored."
+  (ignore args)
+  (setq jsonian--cache nil))
+
+(cl-defstruct jsonian--cache
+  "The jsonian node cache.  O(1) lookup is supported via either location or path."
+  (locations (make-hash-table :test 'eql)   :documentation "A map of locations to nodes.")
+  (paths     (make-hash-table :test 'equal) :documentation "A map of paths to locations."))
+
+(cl-defstruct jsonian--cached-node
+  "Information about a specific node in a JSON buffer."
+  (children nil :documentation "A list of the locations of child nodes.
+If non-nil, the child nodes should exist in cache.
+If the node is a leaf node, CHILDREN may be set to `'leaf'.")
+  (segment nil :documentation "The last segment in the path to this node."))
+
+(cl-defun jsonian--cache-node (location &key path children segment)
+  "Cache information about a node.
+Accepts the following keys:
+LOCATION defines the primary key in the cache.
+PATH is a secondary key in the cache.
+CHILDREN is a list of child nodes in the form ( key . point).
+SEGMENT is segment by which this node is accessed.  If PATH is
+supplied, then segment should equal (car (butlast path))."
+  (cl-assert
+   (integerp location) t
+   "Invalid location")
+  (jsonian--ensure-cache)
+  (when path
+    (puthash path location (jsonian--cache-paths jsonian--cache)))
+  (puthash location
+           (make-jsonian--cached-node
+            :children (mapcar #'cdr children)
+            :segment (or segment (when path (car (butlast path)))))
+           (jsonian--cache-locations jsonian--cache)))
+
+(defun jsonian--ensure-cache ()
+  "Ensure that a valid cache exists, creating one if necessary."
+  (unless jsonian--cache
+    (setq jsonian--cache (make-jsonian--cache))))
+
+(cl-defun jsonian--cached-find-siblings (&key path segment)
+  "Call `jsonian--find-siblings' and cache the result.
+If the result is already in the cache, just return it.  PATH and
+SEGMENT refer to the parent.  Either PATH or SEGMENT must be
+supplied."
+  (jsonian--ensure-cache)
+  (if-let* ((node (gethash (point) (jsonian--cache-locations jsonian--cache)))
+            (children (jsonian--cached-node-children node)))
+      (progn
+        (when path
+          (setf (jsonian--cached-node-segment node) (car-safe (butlast path))))
+        (unless (eq children 'leaf)
+          (seq-map
+           (lambda (x)
+             (cons
+              (jsonian--cached-node-segment (gethash x (jsonian--cache-locations jsonian--cache)))
+              x))
+           children)))
+    (let ((result (jsonian--find-siblings)))
+      (mapc
+       (lambda (kv) (jsonian--cache-node (cdr kv) :segment (car kv) :path (append path (list (car kv)))))
+       result)
+      (jsonian--cache-node (point) :children result :path path :segment segment)
+      result)))
+
 ;;;###autoload
-(defun jsonian-find ()
-  "Navigate to a item in a JSON document."
+(defun jsonian-find (&optional path)
+  "Navigate to a item in a JSON document.
+If PATH is supplied, navigate to it."
   (interactive)
   (setq jsonian--find-buffer (current-buffer))
   (if-let ((selection
-            (completing-read "Select Element: " #'jsonian--find-completion nil t
-                             (save-excursion
-                               (jsonian--correct-starting-point)
-                               (jsonian--display-path (jsonian--reconstruct-path (jsonian--path t nil)) t)))))
+            (or path
+                (completing-read "Select Element: " #'jsonian--find-completion nil t
+                                 (save-excursion
+                                   (jsonian--correct-starting-point)
+                                   (jsonian--display-path (jsonian--reconstruct-path (jsonian--path t nil)) t))))))
       ;; We know that the path is valid since we chose it from the list of valid paths presented
       (goto-char (jsonian--valid-path-p (jsonian--parse-path selection)))))
 
@@ -708,17 +783,17 @@ TYPE is a flag specifying the type of completion."
 
 (defun jsonian--completing-t (path predicate)
   "Compute the set of all possible completions for PATH that satisfy PREDICATE."
-  (if-let ((parent-loc (jsonian--valid-path-p (butlast path))))
+  (if-let (parent-loc (jsonian--valid-path-p (butlast path)))
       (save-excursion
         (goto-char parent-loc)
         (let ((result (seq-map
                        (lambda (x)
                          ;; We trim of the leading "[" or "." since it already exists
                          (let ((path (jsonian--display-path (list (car x)) t)))
-                             (if (> (length path) 0)
-                                 (substring path 1)
-                               path)))
-                       (jsonian--find-siblings))))
+                           (if (> (length path) 0)
+                               (substring path 1)
+                             path)))
+                       (jsonian--cached-find-siblings :path path))))
           (if predicate
               (seq-filter predicate result)
             result)))))
@@ -731,6 +806,7 @@ docs: The function should return nil if there are no matches; it
 should return t if the specified string is a unique and exact
 match; and it should return the longest common prefix substring
 of all matches otherwise."
+  ;; TODO: require uniqueness by ensuring that the node is a leaf
   (save-excursion
     (let* ((final (car-safe (last path)))
            (final-str (if final
@@ -749,7 +825,7 @@ of all matches otherwise."
                                       (number-to-string (car kv))
                                     (car kv)))))
                        (string= final-str (substring k 0 (min (length final-str) (length k))))))
-                   (jsonian--find-siblings))))))
+                   (jsonian--cached-find-siblings :path path))))))
       (setq result
             (if predicate
                 (seq-filter predicate result)
@@ -844,7 +920,7 @@ need to be a leaf path."
                       ((eq (char-after) ?\{) (forward-char))
                       (t (setq leaf t)))
                      t))
-                 (jsonian--find-siblings))
+                 (jsonian--cached-find-siblings :segment (car path)))
           (setq failed t))
         (setq path (cdr path)))
       ;; We reject if we have noticed a failure or exited early by hitting a
@@ -1036,7 +1112,8 @@ number of spaces is determined by
   (set (make-local-variable 'font-lock-defaults)
        '(jsonian--font-lock-keywords
          nil nil nil nil
-         (font-lock-syntactic-face-function . jsonian--syntactic-face))))
+         (font-lock-syntactic-face-function . jsonian--syntactic-face)))
+  (add-to-list 'before-change-functions #'jsonian--handle-change))
 
 ;;;###autoload
 (defun jsonian-enable-flycheck ()

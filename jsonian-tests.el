@@ -181,6 +181,7 @@ Specifically, we need to comply with what `completion-boundaries' describes."
             (should (equal result (cdr x)))))
         '((("foo.bar"     . ".baz")    . (4 . 0))
           (("foo.bar."    . ".baz")    . (8 . 0))
+          (("foo.bar."    . "")        . (8 . 0))
           ((".bar"        . "baz")     . (1 . 3))
           (("foo.bar"     . "")        . (4 . 0))
           ((".foo[\"fizz" . "buzz\"]") . (6 . 5)))))
