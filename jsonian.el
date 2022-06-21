@@ -807,21 +807,23 @@ TYPE is a flag specifying the type of completion."
 <type> and <value> may be nil if the necessary information is not cached."
   (let ((max-value (+ 8 (seq-reduce #'max (seq-map #'length paths) 0))))
     (mapcar (lambda (path)
-              (let* ((full-path (append
+              (let* ((is-index (string-match-p "^[0-9]\\]$" path))
+                     (full-path (append
                                  (butlast (jsonian--parse-path prefix))
                                  (jsonian--parse-path
-                                  (if (string-match-p "^[0-9]\\]$" path)
+                                  (if is-index
                                       (concat "[" path)
                                     path))))
                      (node (gethash
                             (gethash
                              full-path
                              (jsonian--cache-paths cache))
-                            (jsonian--cache-locations cache))))
+                            (jsonian--cache-locations cache)))
+                     (type (and node (jsonian--cached-node-type node))))
                 (list
-                 (jsonian--pad-string (- max-value 4) path t)
+                 (jsonian--pad-string (- max-value 4) (if is-index (concat "[" path) path) t)
                  (jsonian--pad-string
-                  10 (or (and node (jsonian--cached-node-type node)) "") t)
+                  10 (or type "") t)
                  (or (and node (jsonian--cached-node-preview node)) ""))))
             paths)))
 
