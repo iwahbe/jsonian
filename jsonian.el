@@ -697,7 +697,7 @@ If the node is a leaf node, CHILDREN may be set to `'leaf'.")
   (type nil :documentation "The type of the node (as a string), used for display purposes.")
   (preview nil :documentation "A preview of the value, containing test properties."))
 
-(cl-defun jsonian--cache-node (location &key path children segment type preview)
+(cl-defun jsonian--cache-node (location path &key children segment type preview)
   "Cache information about a node.
 Accepts the following keys:
 LOCATION defines the primary key in the cache.
@@ -709,8 +709,7 @@ supplied, then segment should equal (car (butlast path))."
    (integerp location) t
    "Invalid location")
   (jsonian--ensure-cache)
-  (when path
-    (puthash path location (jsonian--cache-paths jsonian--cache)))
+  (puthash path location (jsonian--cache-paths jsonian--cache))
   (let ((existing (or
                    (gethash location
                             (jsonian--cache-locations jsonian--cache))
@@ -732,7 +731,7 @@ supplied, then segment should equal (car (butlast path))."
   (unless jsonian--cache
     (setq jsonian--cache (make-jsonian--cache))))
 
-(cl-defun jsonian--cached-find-children (&key path segment)
+(cl-defun jsonian--cached-find-children (path &key segment)
   "Call `jsonian--find-children' and cache the result.
 If the result is already in the cache, just return it.  PATH and
 SEGMENT refer to the parent.  Either PATH or SEGMENT must be
@@ -750,15 +749,13 @@ supplied."
     (let ((result (jsonian--find-children)))
       (mapc
        (lambda (kv)
-         (jsonian--cache-node (cdr kv)
+         (jsonian--cache-node (cdr kv) (append path (list (car kv)))
                               :segment (car kv)
-                              :path (when path (append path (list (car kv))))
                               :type (jsonian--node-type (cdr kv))
                               :preview (jsonian--node-preview (cdr kv))))
        result)
-      (jsonian--cache-node (point)
+      (jsonian--cache-node (point) path
                            :children result
-                           :path path
                            :segment segment
                            :type (jsonian--node-type (point))
                            :preview (jsonian--node-preview (point)))
@@ -880,7 +877,7 @@ The segment \"foo bar\" would end as \"foo bar\\\"]."
                          path)))
                    (save-excursion
                      (goto-char parent-loc)
-                     (jsonian--cached-find-children :path path)))))
+                     (jsonian--cached-find-children path)))))
       (if predicate
           (seq-filter predicate result)
         result))))
@@ -913,7 +910,7 @@ of all matches otherwise."
                                       (number-to-string (car kv))
                                     (car kv)))))
                        (string= final-str (substring k 0 (min (length final-str) (length k))))))
-                   (jsonian--cached-find-children :path path))))))
+                   (jsonian--cached-find-children path))))))
       (setq result
             (if predicate
                 (seq-filter predicate result)
@@ -991,7 +988,7 @@ need to be a leaf path."
                      (goto-char (cdr x))
                      (save-excursion (setq leaf (not (jsonian--enter-collection))))
                      t))
-                 (jsonian--cached-find-children :segment current-segment :path traversed))
+                 (jsonian--cached-find-children traversed :segment current-segment))
           (setq failed t))
         (setq current-segment (car path)
               traversed (append traversed (list current-segment))
@@ -999,7 +996,7 @@ need to be a leaf path."
       ;; We reject if we have noticed a failure or exited early by hitting a
       ;; leaf node
       (when (and (not failed) (not path))
-        (jsonian--cached-find-children :segment current-segment :path traversed)
+        (jsonian--cached-find-children traversed :segment current-segment)
         (point)))))
 
 (defun jsonian--enter-collection ()
