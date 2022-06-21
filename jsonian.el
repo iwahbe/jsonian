@@ -772,9 +772,19 @@ If PATH is supplied, navigate to it."
                 (completing-read "Select Element: " #'jsonian--find-completion nil t
                                  (save-excursion
                                    (jsonian--correct-starting-point)
-                                   (jsonian--display-path (jsonian--reconstruct-path (jsonian--path t nil)) t))))))
+                                   (when-let* ((path (butlast (jsonian--reconstruct-path (jsonian--path t nil))))
+                                               (display (jsonian--display-path path t)))
+                                     (concat display (jsonian--type-index-string (jsonian--node-type (jsonian--valid-path path))))))))))
       ;; We know that the path is valid since we chose it from the list of valid paths presented
       (goto-char (jsonian--valid-path (jsonian--parse-path selection)))))
+
+(defun jsonian--type-index-string (type)
+  "Return the string necessary to index into TYPE.
+If TYPE does not support some form of indexing, then nil is
+returned."
+  (cond
+   ((equal type "array") "[")
+   ((equal type "object") ".")))
 
 (defun jsonian--find-completion (str predicate type)
   "The function passed to `completing-read' to handle navigating the JSON document.
@@ -822,8 +832,10 @@ TYPE is a flag specifying the type of completion."
                      (type (and node (jsonian--cached-node-type node))))
                 (list
                  (jsonian--pad-string (- max-value 4) (if is-index (concat "[" path) path) t)
-                 (jsonian--pad-string
-                  10 (or type "") t)
+                 (propertize
+                  (jsonian--pad-string
+                   10 (or type "") t)
+                  'face 'font-lock-comment-face)
                  (or (and node (jsonian--cached-node-preview node)) ""))))
             paths)))
 
@@ -892,7 +904,6 @@ docs: The function should return nil if there are no matches; it
 should return t if the specified string is a unique and exact
 match; and it should return the longest common prefix substring
 of all matches otherwise."
-  ;; TODO: require uniqueness by ensuring that the node is a leaf
   (save-excursion
     (let* ((final (car-safe (last path)))
            (final-str (if final
@@ -1080,9 +1091,9 @@ is returned."
                             (jsonian--forward-number)
                             (point))))
    ((eq (char-after pos) ?\[)
-    "[ array ]")
+    (propertize "[ array ]" 'face 'font-lock-type-face))
    ((eq (char-after pos) ?\{)
-    "{ object }")))
+    (propertize "{ object }" 'face 'font-lock-type-face))))
 
 (defun jsonian--parse-path (str)
   "Parse STR as a JSON path.
