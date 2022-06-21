@@ -664,6 +664,9 @@ If there is no collection after point, return nil."
   (overlay       nil :documentation "The overlay used to highlight `match' text.")
   (delete-window nil :documentation "If the hosting `window' should be deleted upon exit."))
 
+(defvar-local jsonian-edit-return-var nil
+  "Information necessary to jump back from `jsonian--edit-mode'.")
+
 (defun jsonian-edit-string ()
   "Edit the string at point in another buffer."
   (interactive)
@@ -698,9 +701,6 @@ If there is no collection after point, return nil."
             (substitute-command-keys
              "Edit, then exit with `\\[jsonian-edit-mode-return]' or abort with \
 `\\[jsonian-edit-mode-cancel]'")))))
-
-(defvar-local jsonian-edit-return-var nil
-  "Information necessary to jump back from `jsonian--edit-mode'.")
 
 (defun jsonian--replace-text-in (start end text &optional buffer)
   "Set the content of the region (START to END) to TEXT in BUFFER.
