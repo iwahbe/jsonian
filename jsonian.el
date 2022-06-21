@@ -694,9 +694,10 @@ If ARG is not nil, move to the ARGth enclosing item."
 If non-nil, the child nodes should exist in cache.
 If the node is a leaf node, CHILDREN may be set to `'leaf'.")
   (segment nil :documentation "The last segment in the path to this node.")
-  (type nil :documentation "The type of the node (as a string), used for display purposes."))
+  (type nil :documentation "The type of the node (as a string), used for display purposes.")
+  (preview nil :documentation "A preview of the value, containing test properties."))
 
-(cl-defun jsonian--cache-node (location &key path children segment type)
+(cl-defun jsonian--cache-node (location &key path children segment type preview)
   "Cache information about a node.
 Accepts the following keys:
 LOCATION defines the primary key in the cache.
@@ -721,7 +722,9 @@ supplied, then segment should equal (car (butlast path))."
     (if path
         (setf (jsonian--cached-node-segment existing) (car (butlast path)))))
   (when type
-    (setf (jsonian--cached-node-type type) type))
+    (setf (jsonian--cached-node-type existing) type))
+  (when preview
+    (setf (jsonian--cached-node-preview existing) preview))
   (puthash location existing (jsonian--cache-locations jsonian--cache))))
 
 (defun jsonian--ensure-cache ()
@@ -747,9 +750,18 @@ supplied."
     (let ((result (jsonian--find-children)))
       (mapc
        (lambda (kv)
-         (jsonian--cache-node (cdr kv) :segment (car kv) :path (when path (append path (list (car kv))))))
+         (jsonian--cache-node (cdr kv)
+                              :segment (car kv)
+                              :path (when path (append path (list (car kv))))
+                              :type (jsonian--node-type (cdr kv))
+                              :preview (jsonian--node-preview (cdr kv))))
        result)
-      (jsonian--cache-node (point) :children result :path path :segment segment)
+      (jsonian--cache-node (point)
+                           :children result
+                           :path path
+                           :segment segment
+                           :type (jsonian--node-type (point))
+                           :preview (jsonian--node-preview (point)))
       result)))
 
 ;;;###autoload
@@ -775,6 +787,7 @@ TYPE is a flag specifying the type of completion."
   ;; See 21.6.7 Programmed Completion in the manual for more details
   ;; (elisp)Programmed Completion
   (with-current-buffer jsonian--find-buffer
+    (jsonian--ensure-cache)
     (cond
      ((eq type nil)
       (jsonian--completing-nil (jsonian--parse-path str) predicate))
@@ -795,7 +808,6 @@ TYPE is a flag specifying the type of completion."
 (defun jsonian--completing-affixation (prefix cache paths)
   "Map each element in PATHS to (list <path> <type> <value>).
 <type> and <value> may be nil if the necessary information is not cached."
-  (jsonian--ensure-cache)
   (let ((max-value (+ 8 (seq-reduce #'max (seq-map #'length paths) 0))))
     (mapcar (lambda (path)
               (let* ((full-path (append
@@ -810,18 +822,24 @@ TYPE is a flag specifying the type of completion."
                              (jsonian--cache-paths cache))
                             (jsonian--cache-locations cache))))
                 (list
-                 path
-                 (if node
-                     (concat (or (jsonian--cached-node-type node) "f") " ")
-                   "nil")
-                 (jsonian--pad-string (- max-value (length path)) "bar"))))
+                 (jsonian--pad-string (- max-value 4) path t)
+                 (jsonian--pad-string
+                  10 (or (and node (jsonian--cached-node-type node)) "") t)
+                 (or (and node (jsonian--cached-node-preview node)) ""))))
             paths)))
 
-(defun jsonian--pad-string (len string)
+(defun jsonian--pad-string (len string &optional pad-right)
   "Pad STRING to LEN by prefixing it with spaces."
-  (concat
-   (make-string (- len (length string)) ?\ )
-   string))
+  (cl-assert (wholenump len) nil "jsonian--pad-string")
+  (if (<= len (length string))
+      string
+    (if pad-right
+        (concat
+         string
+         (make-string (- len (length string)) ?\ ))
+      (concat
+       (make-string (- len (length string)) ?\ )
+       string))))
 
 (defun jsonian--completing-sort (prefix paths)
   "The completing sort function for `jsonian--find-completion'.
@@ -987,11 +1005,10 @@ need to be a leaf path."
 (defun jsonian--enter-collection ()
   "Move point into the collection after point and return t.
 If there is no collection after point, return nil."
-  ;; TODO: use this to mark the type of the item, then display it during completion
   (cond
    ;; Progress into the key
    ((eq (char-after) ?\")
-    (if-let ((end (jsonian--pos-in-keyp t)))
+    (if-let (end (jsonian--pos-in-keyp t))
         (progn (goto-char end)
                (jsonian--forward-whitespace)
                (forward-char) ;; go past the `:'
@@ -1010,6 +1027,63 @@ If there is no collection after point, return nil."
    ((eq (char-after) ?\{) (forward-char) t)
    ;; Anything else must be a leaf
    ))
+
+(defun jsonian--node-type (pos)
+  "Find the type of the node at POS.
+POS must be at the beginning of a node. If no type is found, nil
+is returned."
+  (cond
+   ;; At either a key or a string
+   ((eq (char-after pos) ?\")
+    (save-excursion
+      (goto-char pos)
+      (if-let (end (jsonian--pos-in-keyp t))
+          (progn (goto-char end)
+                          (jsonian--forward-whitespace)
+                          (forward-char)
+                          (jsonian--forward-whitespace)
+                          (jsonian--node-type (point)))
+        "string")))
+   ((or (eq (char-after pos) ?t)
+        (eq (char-after pos) ?f))
+    "boolean")
+   ((eq (char-after pos) ?n) "null")
+   ((eq (char-after pos) ?\[) "array")
+   ((eq (char-after pos) ?\{) "object")
+   ((and (<= (char-after pos) ?9)
+         (>= (char-after pos) ?0))
+    "number")))
+
+(defun jsonian--node-preview (pos)
+  "Provide a preview of the value of the node at POS."
+  (cond
+((eq (char-after pos) ?\")
+    ;; TODO: bound size of string
+    (save-excursion
+      (goto-char pos)
+      (if-let (end (jsonian--pos-in-keyp t))
+          (progn (goto-char end)
+                          (jsonian--forward-whitespace)
+                          (forward-char)
+                          (jsonian--forward-whitespace)
+                          (jsonian--node-preview (point)))
+        (jsonian--forward-string)
+        (buffer-substring pos (point)))))
+   ((or (eq (char-after pos) ?t)
+        (eq (char-after pos) ?n))
+    (buffer-substring pos (+ pos 4)))
+   ((eq (char-after pos) ?f)
+    (buffer-substring pos (+ pos 5)))
+   ((and (<= (char-after pos) ?9)
+         (>= (char-after pos) ?0))
+    (buffer-substring pos (save-excursion
+                            (goto-char pos)
+                            (jsonian--forward-number)
+                            (point))))
+   ((eq (char-after pos) ?\[)
+    "[ array ]")
+   ((eq (char-after pos) ?\{)
+    "{ object }")))
 
 (defun jsonian--parse-path (str)
   "Parse STR as a JSON path.
@@ -1208,8 +1282,8 @@ number of spaces is determined by
 (add-to-list 'auto-mode-alist '("\\.json\\'" . jsonian-mode))
 
 (defvar jsonian--font-lock-keywords
-  (list (cons (regexp-opt '("true" "false")) 'font-lock-constant-face))
-  "Keywords in JSON (true|false).")
+  (list (cons (regexp-opt '("true" "false" "null")) 'font-lock-constant-face))
+  "Keywords in JSON (true|false|null).")
 
 ;;;###autoload
 (define-derived-mode jsonian-mode prog-mode "JSON"
