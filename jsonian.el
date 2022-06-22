@@ -1193,13 +1193,15 @@ string or a integer.  Point is a char location."
        '(jsonian--font-lock-keywords
          nil nil nil nil
          (font-lock-syntactic-face-function . jsonian--syntactic-face)))
-  (add-to-list 'before-change-functions #'jsonian--handle-change))
+  (add-to-list 'before-change-functions #'jsonian--handle-change)
+  (advice-add #'narrow-to-defun :before-until #'jsonian--correct-narrow-to-defun))
 
-(defvar jsonian-mode-map (make-sparse-keymap))
-(define-key jsonian-mode-map (kbd "C-c C-p") #'jsonian-path)
-(define-key jsonian-mode-map (kbd "C-c C-s") #'jsonian-edit-string)
-(define-key jsonian-mode-map (kbd "C-c C-e") #'jsonian-enclosing-item)
-(define-key jsonian-mode-map (kbd "C-c C-f") #'jsonian-find)
+(defvar jsonian-mode-map
+  (let ((km (make-sparse-keymap)))
+    (define-key km (kbd "C-c C-p") #'jsonian-path)
+    (define-key km (kbd "C-c C-s") #'jsonian-edit-string)
+    (define-key km (kbd "C-c C-e") #'jsonian-enclosing-item)
+    (define-key km (kbd "C-c C-f") #'jsonian-find)))
 
 (defun jsonian--syntactic-face (state)
   "The syntactic face function for the position represented by STATE.
@@ -1307,7 +1309,9 @@ designed to be installed with `advice-add' and `:before-until'."
       (jsonian-narrow-to-defun arg))
     correct))
 
-(advice-add 'narrow-to-defun :before-until #'jsonian--correct-narrow-to-defun)
+(defun jsonian-unload-function ()
+  "Unload `jsonian'."
+  (advice-remove #'narrow-to-defun #'jsonian--correct-narrow-to-defun))
 
 
 ;; Foreign integration
