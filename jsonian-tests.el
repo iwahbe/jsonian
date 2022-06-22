@@ -223,5 +223,12 @@ Specifically, we need to comply with what `completion-boundaries' describes."
              (jsonian--find-children)
              '((1 . 58) (0 . 35))))))
 
+(ert-deftest jsonian-indent-line ()
+  (with-file-and-point "path1" 107
+    (jsonian-mode)
+    (insert ",")
+    (funcall-interactively #'newline-and-indent)
+    (should (= (point) 111))))
+
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here
