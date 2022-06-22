@@ -7,11 +7,19 @@
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "27.1"))
 
-;; License:
+;; This program is free software; you can redistribute it and/or
+;; modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation, either version 3 of the
+;; License, or (at your option) any later version.
 
-;; GNU GENERAL PUBLIC LICENSE
-;;    Version 3, 29 June 2007
-;; For the full boilerplate, see LICENSE
+;; This program is distributed in the hope that it will be useful, but
+;; WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+;; General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see
+;; <http://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -1193,13 +1201,15 @@ string or a integer.  Point is a char location."
        '(jsonian--font-lock-keywords
          nil nil nil nil
          (font-lock-syntactic-face-function . jsonian--syntactic-face)))
-  (add-to-list 'before-change-functions #'jsonian--handle-change))
+  (add-to-list 'before-change-functions #'jsonian--handle-change)
+  (advice-add #'narrow-to-defun :before-until #'jsonian--correct-narrow-to-defun))
 
-(defvar jsonian-mode-map (make-sparse-keymap))
-(define-key jsonian-mode-map (kbd "C-c C-p") #'jsonian-path)
-(define-key jsonian-mode-map (kbd "C-c C-s") #'jsonian-edit-string)
-(define-key jsonian-mode-map (kbd "C-c C-e") #'jsonian-enclosing-item)
-(define-key jsonian-mode-map (kbd "C-c C-f") #'jsonian-find)
+(defvar jsonian-mode-map
+  (let ((km (make-sparse-keymap)))
+    (define-key km (kbd "C-c C-p") #'jsonian-path)
+    (define-key km (kbd "C-c C-s") #'jsonian-edit-string)
+    (define-key km (kbd "C-c C-e") #'jsonian-enclosing-item)
+    (define-key km (kbd "C-c C-f") #'jsonian-find)))
 
 (defun jsonian--syntactic-face (state)
   "The syntactic face function for the position represented by STATE.
@@ -1316,7 +1326,9 @@ designed to be installed with `advice-add' and `:before-until'."
       (jsonian-narrow-to-defun arg))
     correct))
 
-(advice-add 'narrow-to-defun :before-until #'jsonian--correct-narrow-to-defun)
+(defun jsonian-unload-function ()
+  "Unload `jsonian'."
+  (advice-remove #'narrow-to-defun #'jsonian--correct-narrow-to-defun))
 
 
 ;; Foreign integration
