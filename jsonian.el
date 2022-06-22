@@ -32,8 +32,15 @@ determine string and key values respectively."
   :type 'boolean
   :group 'jsonian)
 
-(defcustom jsonian-spaces-per-indentation 4
-  "The number of spaces each increase in indentation level indicates."
+(defcustom jsonian-indentation nil
+  "The number of spaces each increase in indentation level indicates.
+nil means that `jsonian-mode' will infer the correct indentation."
+  :type '(choice (const nil) integer)
+  :group 'jsonian)
+(defalias 'jsonian-spaces-per-indentation jsonian-indentation)
+
+(defcustom jsonian-default-indentation 4
+  "The default number of spaces per indent for when it cannot be inferred."
   :type 'integer
   :group 'jsonian)
 
@@ -277,13 +284,17 @@ need to be a leaf path."
   "Move point to the item enclosing the current point.
 If ARG is not nil, move to the ARGth enclosing item."
   (interactive "P")
-  (dotimes (_ (or arg 1))
-    (jsonian--enclosing-item))
-  (when (and (not (eq arg 0)) (jsonian--after-key (point)))
+  (if arg
+      (cl-assert (wholenump arg) t "Invalid input to `jsonian-enclosing-item'.")
+    (setq arg 1))
+  (while (and (> arg 0) (jsonian--enclosing-item))
+    (cl-decf arg 1))
+  (when (and (= arg 0) (jsonian--after-key (point)))
     (jsonian--backward-whitespace)
     (backward-char)
     (jsonian--backward-whitespace)
-    (jsonian--backward-string)))
+    (jsonian--backward-string))
+  (= arg 0))
 
 (defun jsonian--enclosing-item ()
   "Move point to the the enclosing item start."
@@ -1227,17 +1238,55 @@ JSON font lock syntactic face function."
   (list (cons (regexp-opt '("true" "false" "null")) 'font-lock-constant-face))
   "Keywords in JSON (true|false|null).")
 
+(defun jsonian--infer-indentation ()
+  "Infer the level of indentation at point."
+  (save-excursion
+    (forward-line 0)
+    (jsonian--forward-whitespace)
+    ;; Find the column we start at
+    (let* ((start (current-column))
+           ;; FInd another column
+           (end (if (jsonian-enclosing-item)
+                    ;; We found an enclosing item, look at its column column
+                    (if (= (current-column) start)
+                        ;; The same as the starting column, We did a jump like from 1 to 2.
+                        ;;   {
+                        ;; -2->"foo": {
+                        ;;       "bar": 3
+                        ;; -1->}
+                        ;;   }
+                        ;; We repeat from 2, ensuring we will return the result of the
+                        ;; next call to `jsonian--infer-indentation'.
+                        (+ (jsonian--infer-indentation)
+                           (current-column))
+                      ;; Not the same as the starting column. This is what we want.
+                      (current-column))
+                  ;; We are not in an item, so we must be at the top level of the document.
+                  ;; Move into the document and see the indentation level of the first item.
+                  (forward-char)
+                  (jsonian--enter-collection)
+                  (jsonian--forward-whitespace)
+                  (current-column))))
+      (- (max start end) (min start end)))))
+
 ;;;###autoload
 (defun jsonian-indent-line ()
   "Indent a single line.
 The indent is determined by examining the previous line.  The
-number of spaces is determined by
-`jsonian-spaces-per-indentation'."
+number of spaces is determined by `jsonian-indentation' if it is
+set, otherwise it is inferred from the document."
   (interactive)
-  (indent-line-to (jsonian--get-indent-level)))
+  (indent-line-to
+   (jsonian--get-indent-level (or
+                               jsonian-indentation
+                               (if-let* ((indent (jsonian--infer-indentation))
+                                         (not-zero (> indent 0)))
+                                   indent
+                                 jsonian-default-indentation)))))
 
-(defun jsonian--get-indent-level ()
-  "Find the indentation level of the current line by examining the previous line."
+(defun jsonian--get-indent-level (indent)
+  "Find the indentation level of the current line by examining the previous line.
+INDENT is the number of spaces in each indentation level."
   (if (= (line-number-at-pos) 1)
       0
     (let ((level 0))
@@ -1247,7 +1296,7 @@ number of spaces is determined by
         (when (or (eq (char-before) ?\{)
                   (eq (char-before) ?\[))
           ;; If it is a opening \{ or \[, the next line should be indented by 1 unit
-          (cl-incf level jsonian-spaces-per-indentation))
+          (cl-incf level indent))
         (beginning-of-line)
         (while (or (eq (char-after) ?\ )
                    (eq (char-after) ?\t))
@@ -1262,13 +1311,13 @@ number of spaces is determined by
         ;; 1: {
         ;; 2:
         ;; 3: }
-        (while (and (char-after)
-                    (= (char-after) ? )
-                    (= (char-after) ?\t))
+        (while (or
+                (eq (char-after) ? )
+                (eq (char-after) ?\t))
           (forward-char))
         (when (or (eq (char-after) ?\})
                   (eq (char-after) ?\]))
-          (cl-decf level jsonian-spaces-per-indentation)))
+          (cl-decf level indent)))
       level)))
 
 (defun jsonian-beginning-of-defun (&optional arg)
