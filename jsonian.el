@@ -1256,7 +1256,16 @@ number of spaces is determined by
       ;; Make sure that we account for any closing brackets in front of (point)
       (save-excursion
         (beginning-of-line)
-        (jsonian--forward-whitespace)
+        ;; We want to be careful here that we only look at this line, and not
+        ;; the next line. Looking at the next line will cause us to go backward
+        ;; when looking at line 2 of the following:
+        ;; 1: {
+        ;; 2:
+        ;; 3: }
+        (while (and (char-after)
+                    (= (char-after) ? )
+                    (= (char-after) ?\t))
+          (forward-char))
         (when (or (eq (char-after) ?\})
                   (eq (char-after) ?\]))
           (cl-decf level jsonian-spaces-per-indentation)))
