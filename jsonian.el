@@ -909,7 +909,7 @@ If PATH is supplied, navigate to it."
       (goto-char (jsonian--valid-path (jsonian--parse-path selection)))))
 
 (defun jsonian--find-completion (str predicate type)
-  "The function passed to `completing-read' to handle navigating the JSON document.
+  "The function passed to `completing-read' to handle navigating the buffer.
 STR is the string to be completed.
 PREDICATE is a function by which to filter possible matches.
 TYPE is a flag specifying the type of completion."
@@ -1149,12 +1149,13 @@ string or a integer.  Point is a char location."
                       0)
                     (point)))))
         (while (jsonian--traverse-forward)
-          (setq elements (cons
-                          (cons (if-let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp))))
-                                    (buffer-substring-no-properties (1+ (point)) (1- end))
-                                  (length elements))
-                                (point))
-                          elements)))
+          (setq elements
+                (cons
+                 (cons (if-let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp))))
+                           (buffer-substring-no-properties (1+ (point)) (1- end))
+                         (length elements))
+                       (point))
+                 elements)))
         elements))))
 
 
@@ -1252,7 +1253,8 @@ number of spaces is determined by
                    (eq (char-after) ?\t))
           (forward-char))
         (cl-incf level (current-column)))
-      (save-excursion ;; Make sure that we account for any closing brackets in front of (point)
+      ;; Make sure that we account for any closing brackets in front of (point)
+      (save-excursion
         (beginning-of-line)
         (jsonian--forward-whitespace)
         (when (or (eq (char-after) ?\})
@@ -1321,7 +1323,8 @@ designed to be installed with `advice-add' and `:before-until'."
   (declare-function flycheck-add-mode "flycheck")
   (let ((checkers flycheck-checkers))
     (while checkers
-      (when (seq-some (apply-partially #'eq 'json-mode) (flycheck-checker-get (car checkers) 'modes))
+      (when (seq-some (apply-partially #'eq 'json-mode)
+                      (flycheck-checker-get (car checkers) 'modes))
         (flycheck-add-mode (car checkers) 'jsonian-mode))
       (setq checkers (cdr checkers)))))
 
