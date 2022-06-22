@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: purcell/setup-emacs@master
         with:
-          version: "26.1"
+          version: "27.1"
       - uses: actions/checkout@v2
         with:
           ref: ${{ env.PR_COMMIT_SHA }}

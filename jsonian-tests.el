@@ -17,10 +17,23 @@
   (defmacro with-file-and-point (file point &rest body)
     "Open the test file named FILE and go to POINT."
     (declare (indent defun))
-    `(with-temp-buffer
-       (insert-file-contents-literally ,(format "./test-assets/%s.json" file))
-       (goto-char ,point)
-       ,@body)))
+    `(progn
+       (with-temp-buffer
+         (insert-file-contents-literally ,(format "./test-assets/%s.json" file))
+         (jsonian-mode)
+         (goto-char ,point)
+         ,@body)
+       (with-temp-buffer
+         (insert-file-contents ,(format "./test-assets/%s.json" file))
+         (jsonian-mode)
+         (progn ;; Force a font lock on the buffer
+           (setq font-lock-major-mode nil)
+           (syntax-ppss-flush-cache -1)
+           (font-lock-set-defaults)
+           (save-excursion
+             (font-lock-fontify-region (point-min) (point-max))))
+         (goto-char ,point)
+         ,@body))))
 
 (ert-deftest jsonian--display-path ()
   (should (string=
@@ -126,8 +139,7 @@
     (should-point 49)
     (jsonian--traverse-forward 3)
     (should-point 64)
-    (should-not (jsonian--traverse-forward))
-    (should-point 64)))
+    (should-not (jsonian--traverse-forward))))
 
 (ert-deftest jsonian-indent-leave-alone ()
   "Load `indent1' and indent each line.
@@ -161,6 +173,55 @@ We test that all lines are unchanged"
      ("no\"quotes\"" . nil)
      ("[squares" . nil)
      ("other]" . nil))))
+
+(ert-deftest jsonian--parse-path ()
+  "Check that we can parse paths."
+  (mapc (lambda (x)
+          (should (equal (jsonian--parse-path (car x)) (cdr x))))
+        '(("." . (""))
+          ("" . ())
+          (".foo.bar" . ("foo" "bar"))
+          ("[\"foo\"][123][\"bar\"]" . ("foo" 123 "bar")))))
+
+(ert-deftest jsonian--partial-parse-paths ()
+  "Because `jsonian--parse-path' is used by interactive contexts, we must succeed on partial paths as well."
+  (mapc (lambda (x)
+          (should (equal (jsonian--parse-path (car x)) (cdr x))))
+        '((".bar[1pos][3]"    . ("bar" "1pos" 3))
+          (".bar[1pos]"       . ("bar" "1pos"))
+          (".bar[1pos"        . ("bar" "1pos"))
+          (".foo[1"           . ("foo" 1))
+          (".foo[\"f"         . ("foo" "f"))
+          (".foo[\" e"        . ("foo" " e"))
+          (".foo["            . ("foo" ""))
+          (".foo[\""          . ("foo" ""))
+          (".foo. e"          . ("foo" "e"))
+          (".foo.e "          . ("foo" "e"))
+          (".foo.bar."        . ("foo" "bar" ""))
+          ("[0].foo.bar."     . (0 "foo" "bar" ""))
+          ("[\"0\"].foo.bar." . ("0" "foo" "bar" ""))
+          (".foo[\"bar\""     . ("foo" "bar")))))
+
+(ert-deftest jsonian--completing-boundary ()
+  "Check that completing boundary works as expected.
+Specifically, we need to comply with what `completion-boundaries' describes."
+  (mapc (lambda (x)
+          (let ((result (jsonian--completing-boundary (caar x) (cdar x))))
+            (should (equal result (cdr x)))))
+        '((("foo.bar"     . ".baz")    . (4 . 0))
+          (("foo.bar."    . ".baz")    . (8 . 0))
+          (("foo.bar."    . "")        . (8 . 0))
+          ((".bar"        . "baz")     . (1 . 3))
+          (("foo.bar"     . "")        . (4 . 0))
+          ((".foo[\"fizz" . "buzz\"]") . (6 . 5))
+          ((".foo[" . ""             ) . (5 . 0)))))
+
+(ert-deftest jsonian--array-find-children ()
+  "Check that we can find the children of arrays correctly."
+  (with-file-and-point "children1" 7
+    (should (equal
+             (jsonian--find-children)
+             '((1 . 58) (0 . 35))))))
 
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here
