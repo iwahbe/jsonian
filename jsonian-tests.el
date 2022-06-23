@@ -19,13 +19,15 @@
     (declare (indent defun))
     `(progn
        (with-temp-buffer
-         (insert-file-contents-literally ,(format "./test-assets/%s.json" file))
+         (insert-file-contents-literally (format "./test-assets/%s.json" ,file))
          (jsonian-mode)
+         (indent-tabs-mode -1)
          (goto-char ,point)
          ,@body)
        (with-temp-buffer
-         (insert-file-contents ,(format "./test-assets/%s.json" file))
+         (insert-file-contents (format "./test-assets/%s.json" ,file))
          (jsonian-mode)
+         (indent-tabs-mode -1)
          (progn ;; Force a font lock on the buffer
            (setq font-lock-major-mode nil)
            (syntax-ppss-flush-cache -1)
@@ -141,15 +143,29 @@
     (should-point 64)
     (should-not (jsonian--traverse-forward))))
 
-(ert-deftest jsonian-indent-leave-alone ()
+(ert-deftest jsonian-indent-specified ()
   "Load `indent1' and indent each line.
 We test that all lines are unchanged"
   (with-file-and-point "indent1" (point-min)
-    (let ((jsonian-spaces-per-indentation 4)
+    (let ((jsonian-indentation 4)
           (file-contents (buffer-string)))
       (dotimes (l (count-lines (point-min) (point-max)))
-        (jsonian-indent-line))
-      (should (string= (buffer-string) file-contents)))))
+        (jsonian-indent-line)
+        (forward-line))
+      (should (string= (buffer-string) file-contents))))
+  (with-file-and-point "path1" (point-min)
+    (let ((jsonian-indentation 4))
+      (dotimes (l (count-lines (point-min) (point-max)))
+        (jsonian-indent-line)
+        (forward-line))
+      (should (string= "{
+    \"foo\": {
+        \"bar\": 3
+    },
+    \"fizz\": [true, 2, \"3\", false, { \"some\": \"object\" }],
+    \"thing1\": \"thing2\"
+}
+" (buffer-substring-no-properties (point-min) (point-max)))))))
 
 (ert-deftest jsonian-path ()
   (with-file-and-point "path1" (point-min)
@@ -225,10 +241,21 @@ Specifically, we need to comply with what `completion-boundaries' describes."
 
 (ert-deftest jsonian-indent-line ()
   (with-file-and-point "path1" 107
-    (jsonian-mode)
     (insert ",")
     (funcall-interactively #'newline-and-indent)
     (should (= (point) 111))))
+
+(ert-deftest jsonian-indered-indent ()
+  "Check that we correctly infer the indentation of our test files."
+  (mapc (lambda (file)
+          (with-file-and-point file (point-min)
+            (let ((file-contents (buffer-string)))
+              (dotimes (l (count-lines (point-min) (point-max)))
+                (jsonian-indent-line)
+                (forward-line))
+              (should (string= (buffer-string) file-contents))))
+          )
+        '("indent1" "children1" "path1")))
 
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here
