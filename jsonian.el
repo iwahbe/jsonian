@@ -1251,7 +1251,9 @@ JSON font lock syntactic face function."
 (defun jsonian--infer-indentation ()
   "Infer the level of indentation at point."
   (save-excursion
-    (forward-line 0)
+    ;; We examine the line above ours, under the assumption that it is correctly
+    ;; formatted.
+    (forward-line -1)
     (jsonian--forward-whitespace)
     ;; Find the column we start at
     (let* ((start (current-column))
