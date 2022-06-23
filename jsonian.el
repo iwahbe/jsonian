@@ -1196,10 +1196,20 @@ string or a integer.  Point is a char location."
     s)
   "The syntax table for JSON.")
 
+(defvar jsonian-mode-map
+  (let ((km (make-sparse-keymap)))
+    (define-key km (kbd "C-c C-p") #'jsonian-path)
+    (define-key km (kbd "C-c C-s") #'jsonian-edit-string)
+    (define-key km (kbd "C-c C-e") #'jsonian-enclosing-item)
+    (define-key km (kbd "C-c C-f") #'jsonian-find)
+    km)
+  "The mode-map for `jsonian-mode'.")
+
 ;;;###autoload
 (define-derived-mode jsonian-mode prog-mode "JSON"
   "Major mode for editing JSON files."
   :syntax-table jsonian-syntax-table
+  :group 'jsonian
   (set (make-local-variable 'comment-start) "")
   (set (make-local-variable 'comment-end) "")
   (set (make-local-variable 'indent-line-function)
@@ -1214,13 +1224,6 @@ string or a integer.  Point is a char location."
          (font-lock-syntactic-face-function . jsonian--syntactic-face)))
   (add-to-list 'before-change-functions #'jsonian--handle-change)
   (advice-add #'narrow-to-defun :before-until #'jsonian--correct-narrow-to-defun))
-
-(defvar jsonian-mode-map
-  (let ((km (make-sparse-keymap)))
-    (define-key km (kbd "C-c C-p") #'jsonian-path)
-    (define-key km (kbd "C-c C-s") #'jsonian-edit-string)
-    (define-key km (kbd "C-c C-e") #'jsonian-enclosing-item)
-    (define-key km (kbd "C-c C-f") #'jsonian-find)))
 
 (defun jsonian--syntactic-face (state)
   "The syntactic face function for the position represented by STATE.
