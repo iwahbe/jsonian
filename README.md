@@ -153,7 +153,7 @@ By default, this command is bound to `C-x C-s`.
 
 Move point to the enclosing node. For example:
 
-``` json
+```json
 [
     { "foo": { "fizz": 3, "buzz": 5 } },
     { "bar": { "fizz": 3, "buzz": 5 } }
@@ -167,6 +167,11 @@ the point to the opening `[`.
 
 By default, this function is bound to `C-x C-e`.
 
+#### jsonian-find
+
+Provide an interactive completion interface for selecting an element in the
+buffer. When the element is selected, jump to that point in the buffer.
+
 #### jsonian-enable-flycheck
 
 Enable ‘jsonian-mode’ for all checkers where ‘json-mode’ is enabled.
@@ -179,13 +184,13 @@ primitive benchmark is included to the `Makefile`. It opens a very very large
 the end of the file and exits. Here is a comparison of the time it takes to
 fontify the whole buffer on a file:
 
-| Package            | Time                                                           |
-| ------------------ | -------------------------------------------------------------- |
-| `fundamental-mode` | 8 seconds                                                      |
-| `prog-mode`        | 8 seconds                                                      |
-| `jsonian`          | 12 seconds                                                     |
-| `javascript-mode`  | 31 seconds                                                     |
-| `json-mode`        | Fails after 43 seconds with "Stack overflow in regexp matcher" |
+| Package            | Time                                                           | comparison |
+|--------------------|----------------------------------------------------------------|------------|
+| `fundamental-mode` | 8 seconds                                                      | 0.66       |
+| `prog-mode`        | 8 seconds                                                      | 0.66       |
+| `jsonian`          | 12 seconds                                                     | 1          |
+| `javascript-mode`  | 31 seconds                                                     | 2.58       |
+| `json-mode`        | Fails after 43 seconds with "Stack overflow in regexp matcher" | 3.58       |
 
 Here is what we can take away from this benchmark:
 

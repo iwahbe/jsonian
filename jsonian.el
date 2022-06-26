@@ -23,9 +23,22 @@
 
 ;;; Commentary:
 
-;; Provides functions to edit JSON files.  So far these include
-;; - `jsonian-path': Display the path to a point in a JSON file.
-;; - `jsonian-edit-string': A convenience function for editing a JSON string in a separate buffer.
+;; `jsonian' provides a fully featured `major-mode' to view, navigate and edit JSON files.
+;; Notable features include:
+;; - `jsonian-path': Display the path to the JSON object at point.
+;; - `jsonian-edit-string': Edit the uninterned string at point cleanly in a separate buffer.
+;; - `jsonian-enclosing-item': Move point to the beginning of the collection enclosing point.
+;; - `jsonian-find': A `find-file' style interface to navigating a JSON document.
+;; - Automatic indentation discovery via `jsonian-indent-line'.
+;;
+;; When `jsonian' is loaded, it adds itself to `auto-mode-alist'. This will
+;; overwrite `javascript-mode' by default when opening a .json file.
+;;
+;; To have `jsonian-mode' activate when any JSON like buffer is opened,
+;; regardless of the extension, add
+;;  (add-to-list 'magic-fallback-mode-alist '("^[{[]$" . jsonian-mode))
+;; to your config after loading `jsonian'.
+
 
 ;;; Code:
 
@@ -1241,8 +1254,6 @@ JSON font lock syntactic face function."
    ((nth 4 state) font-lock-comment-face)))
 
 (add-to-list 'hs-special-modes-alist '(jsonian-mode "{" "}" "/[*/]" nil))
-
-(add-to-list 'magic-fallback-mode-alist '("^[{[]$" . jsonian-mode))
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.json\\'" . jsonian-mode))
