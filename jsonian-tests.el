@@ -21,13 +21,13 @@
        (with-temp-buffer
          (insert-file-contents-literally (format "./test-assets/%s.json" ,file))
          (jsonian-mode)
-         (indent-tabs-mode -1)
+         (setq indent-tabs-mode nil)
          (goto-char ,point)
          ,@body)
        (with-temp-buffer
          (insert-file-contents (format "./test-assets/%s.json" ,file))
          (jsonian-mode)
-         (indent-tabs-mode -1)
+         (setq indent-tabs-mode nil)
          (progn ;; Force a font lock on the buffer
            (setq font-lock-major-mode nil)
            (syntax-ppss-flush-cache -1)

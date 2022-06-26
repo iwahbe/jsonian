@@ -3,7 +3,7 @@ SHELL := /bin/bash
 
 all: build
 
-.PHONY: test lint clean checkdoc package-lint
+.PHONY: test lint clean checkdoc package-lint benchmark
 
 build: jsonian.elc
 
@@ -18,6 +18,7 @@ clean:
 	  done                                   \
     fi
 	@rm -rf bin
+	@rm -f ${LARGE_JSON_FILE}
 
 # Here we want run checkdoc-file, and error if it finds a lint.
 lint: checkdoc package-lint
@@ -43,3 +44,40 @@ checkdoc:
 	$(EMACS) -Q --batch -L .                       \
 	  --eval "(setq byte-compile-error-on-warn t)" \
 	  -f batch-byte-compile $<
+
+bench = time $(EMACS) -Q -nw $(3) \
+--eval '(setq enable-local-variables nil)' \
+--eval '(setq large-file-warning-threshold nil)' \
+--eval '(switch-to-buffer (find-file-literally "$(1)"))' \
+--eval $(2) \
+--eval '(condition-case err \
+(with-current-buffer (current-buffer) \
+(setq font-lock-major-mode nil) \
+(syntax-ppss-flush-cache -1) \
+(font-lock-set-defaults) \
+(save-excursion \
+(font-lock-fontify-region (point-min) (point-max)))) \
+((debug error) (kill-emacs (error-message-string err))))' \
+--eval '(goto-char (point-max))' \
+--eval '(kill-emacs)'
+
+LARGE_JSON_FILE := test-assets/large-json-file.json
+${LARGE_JSON_FILE}:
+	curl 'https://raw.githubusercontent.com/pulumi/pulumi-azure-native/master/provider/cmd/pulumi-resource-azure-native/schema.json' > ${LARGE_JSON_FILE}
+
+bench-base: ${LARGE_JSON_FILE} jsonian.elc
+
+bench-jsonian: bench-base
+	$(call bench,${LARGE_JSON_FILE}, "(progn (require 'jsonian) (jsonian-mode))", -L .)
+
+bench-json-mode: bench-base
+	$(call bench,${LARGE_JSON_FILE}, "(progn (require 'json-mode) (json-mode))", -L ../json-mode -L ../json-snatcher -L ../json-reformat)
+
+bench-javascript: bench-base
+	$(call bench,${LARGE_JSON_FILE}, "(javascript-mode)",)
+
+bench-fundamental: bench-base
+	$(call bench,${LARGE_JSON_FILE},"(fundamental-mode)",)
+
+bench-prog: bench-base
+	$(call bench,${LARGE_JSON_FILE},"(prog-mode)",)

@@ -23,9 +23,22 @@
 
 ;;; Commentary:
 
-;; Provides functions to edit JSON files.  So far these include
-;; - `jsonian-path': Display the path to a point in a JSON file.
-;; - `jsonian-edit-string': A connivance function for editing a JSON string in a separate buffer.
+;; `jsonian' provides a fully featured `major-mode' to view, navigate and edit JSON files.
+;; Notable features include:
+;; - `jsonian-path': Display the path to the JSON object at point.
+;; - `jsonian-edit-string': Edit the uninterned string at point cleanly in a separate buffer.
+;; - `jsonian-enclosing-item': Move point to the beginning of the collection enclosing point.
+;; - `jsonian-find': A `find-file' style interface to navigating a JSON document.
+;; - Automatic indentation discovery via `jsonian-indent-line'.
+;;
+;; When `jsonian' is loaded, it adds itself to `auto-mode-alist'.  This will
+;; overwrite `javascript-mode' by default when opening a .json file.
+;;
+;; To have `jsonian-mode' activate when any JSON like buffer is opened,
+;; regardless of the extension, add
+;;  (add-to-list 'magic-fallback-mode-alist '("^[{[]$" . jsonian-mode))
+;; to your config after loading `jsonian'.
+
 
 ;;; Code:
 
@@ -40,12 +53,12 @@ determine string and key values respectively."
   :type 'boolean
   :group 'jsonian)
 
+(define-obsolete-variable-alias 'jsonian-spaces-per-indentation 'jsonian-indentation "27.1")
 (defcustom jsonian-indentation nil
   "The number of spaces each increase in indentation level indicates.
 nil means that `jsonian-mode' will infer the correct indentation."
   :type '(choice (const nil) integer)
   :group 'jsonian)
-(defalias 'jsonian-spaces-per-indentation jsonian-indentation)
 
 (defcustom jsonian-default-indentation 4
   "The default number of spaces per indent for when it cannot be inferred."
@@ -1242,8 +1255,6 @@ JSON font lock syntactic face function."
 
 (add-to-list 'hs-special-modes-alist '(jsonian-mode "{" "}" "/[*/]" nil))
 
-(add-to-list 'magic-fallback-mode-alist '("^[{[]$" . jsonian-mode))
-
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.json\\'" . jsonian-mode))
 
@@ -1300,8 +1311,10 @@ set, otherwise it is inferred from the document."
                                  jsonian-default-indentation)))))
 
 (defun jsonian--get-indent-level (indent)
-  "Find the indentation level of the current line by examining the previous line.
-INDENT is the number of spaces in each indentation level."
+  "Find the indentation level of the current line.
+The indentation level of the current line is derived from the
+indentation level of the previous line.  INDENT is the number of
+spaces in each indentation level."
   (if (= (line-number-at-pos) 1)
       0
     (let ((level 0))
@@ -1310,7 +1323,8 @@ INDENT is the number of spaces in each indentation level."
         (jsonian--backward-whitespace)
         (when (or (eq (char-before) ?\{)
                   (eq (char-before) ?\[))
-          ;; If it is a opening \{ or \[, the next line should be indented by 1 unit
+          ;; If it is a opening \{ or \[, the next line should be indented by 1
+          ;; unit
           (cl-incf level indent))
         (beginning-of-line)
         (while (or (eq (char-after) ?\ )
