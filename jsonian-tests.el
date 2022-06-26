@@ -10,6 +10,8 @@
 
 (require 'jsonian)
 (require 'ert)
+(require 'simple)
+(require 'font-lock)
 
 (eval-when-compile
   (defmacro should-point (num)
