@@ -1321,7 +1321,8 @@ INDENT is the number of spaces in each indentation level."
         (jsonian--backward-whitespace)
         (when (or (eq (char-before) ?\{)
                   (eq (char-before) ?\[))
-          ;; If it is a opening \{ or \[, the next line should be indented by 1 unit
+          ;; If it is a opening \{ or \[, the next line should be indented by 1
+          ;; unit
           (cl-incf level indent))
         (beginning-of-line)
         (while (or (eq (char-after) ?\ )
