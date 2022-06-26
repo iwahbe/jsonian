@@ -1311,8 +1311,10 @@ set, otherwise it is inferred from the document."
                                  jsonian-default-indentation)))))
 
 (defun jsonian--get-indent-level (indent)
-  "Find the indentation level of the current line by examining the previous line.
-INDENT is the number of spaces in each indentation level."
+  "Find the indentation level of the current line.
+The indentation level of the current line is derived from the
+indentation level of the previous line. INDENT is the number of
+spaces in each indentation level."
   (if (= (line-number-at-pos) 1)
       0
     (let ((level 0))
