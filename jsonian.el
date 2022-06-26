@@ -25,7 +25,7 @@
 
 ;; Provides functions to edit JSON files.  So far these include
 ;; - `jsonian-path': Display the path to a point in a JSON file.
-;; - `jsonian-edit-string': A connivance function for editing a JSON string in a separate buffer.
+;; - `jsonian-edit-string': A convenience function for editing a JSON string in a separate buffer.
 
 ;;; Code:
 
@@ -40,12 +40,12 @@ determine string and key values respectively."
   :type 'boolean
   :group 'jsonian)
 
+(define-obsolete-variable-alias 'jsonian-spaces-per-indentation 'jsonian-indentation "27.1")
 (defcustom jsonian-indentation nil
   "The number of spaces each increase in indentation level indicates.
 nil means that `jsonian-mode' will infer the correct indentation."
   :type '(choice (const nil) integer)
   :group 'jsonian)
-(defalias 'jsonian-spaces-per-indentation jsonian-indentation)
 
 (defcustom jsonian-default-indentation 4
   "The default number of spaces per indent for when it cannot be inferred."
