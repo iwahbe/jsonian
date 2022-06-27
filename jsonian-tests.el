@@ -197,7 +197,9 @@ We test that all lines are unchanged"
         '(("." . (""))
           ("" . ())
           (".foo.bar" . ("foo" "bar"))
-          ("[\"foo\"][123][\"bar\"]" . ("foo" 123 "bar")))))
+          ("[\"foo\"][123][\"bar\"]" . ("foo" 123 "bar"))
+          (".foo[\"fizz.buzz\"]" . ("foo" "fizz.buzz"))
+          (".foo[\"$ref\"].bar" . ("foo" "$ref" "bar")))))
 
 (ert-deftest jsonian--partial-parse-paths ()
   "Because `jsonian--parse-path' is used by interactive contexts, we must succeed on partial paths as well."
@@ -216,7 +218,8 @@ We test that all lines are unchanged"
           (".foo.bar."        . ("foo" "bar" ""))
           ("[0].foo.bar."     . (0 "foo" "bar" ""))
           ("[\"0\"].foo.bar." . ("0" "foo" "bar" ""))
-          (".foo[\"bar\""     . ("foo" "bar")))))
+          (".foo[\"bar\""     . ("foo" "bar"))
+          ("$ref.bar"         . ("$ref" "bar")))))
 
 (ert-deftest jsonian--completing-boundary ()
   "Check that completing boundary works as expected.

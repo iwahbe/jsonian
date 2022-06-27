@@ -95,6 +95,7 @@ b. leveraging C code whenever possible."
   (with-current-buffer (or buffer (current-buffer))
     (save-excursion
       (when pos (goto-char pos))
+      (jsonian--forward-whitespace)
       (jsonian--correct-starting-point)
       (let ((result (jsonian--reconstruct-path (jsonian--path t nil))) display)
         (when (called-interactively-p 'interactive)
@@ -196,6 +197,9 @@ If PRETTY is non-nil, format for human readable."
       (t (error "Unknown path element %s" path))))
    path ""))
 
+(defconst jsonian--complex-segment-regex "\\([[:blank:].\"\\[]\\|\\]\\)"
+  "The set of characters that make a path complex.")
+
 (defun jsonian--parse-path (str)
   "Parse STR as a JSON path.
 A list of elements is returned."
@@ -228,6 +232,7 @@ A list of elements is returned."
     (jsonian--parse-path (substring str 1)))
    ;; There are no more fully valid parses, so look at invalid parses
    ((string-match "^\\[[0-9]+$" str)
+    ;; A number without a closing ]
     (cons (string-to-number (substring str 1)) nil))
    ((string-match-p "^\\[" str)
     ;; We have found a string starting with [, it isn't a number, so parse it
@@ -238,7 +243,9 @@ A list of elements is returned."
               (jsonian--parse-path (substring str (match-end 0))))
       ;; Did not find a terminator
       (cons (substring str 1) nil)))
-   ((string-match-p "^[a-zA-Z]" str)
+   ((not (eq (string-match-p jsonian--complex-segment-regex str) 0))
+    ;; If we are not at a character that cannot be part of a simple path,
+    ;; attempt making it one.
     (jsonian--parse-path (concat "." str)))
    (t (user-error "Unexpected input: %s" str))))
 
@@ -249,7 +256,7 @@ A segment is considered simple if and only if it does not contain any
 - period
 - quotes
 - square brackets"
-  (not (string-match-p "\\([[:blank:].\"\\[]\\|\\]\\)" segment)))
+  (not (string-match-p jsonian--complex-segment-regex segment)))
 
 (defun jsonian--reconstruct-path (input)
   "Cleanup INPUT as the result of `jsonian--path'."
@@ -882,6 +889,7 @@ PREVIEW is a (fontified) string preview of the node."
 
 (defun jsonian--ensure-cache ()
   "Ensure that a valid cache exists, creating one if necessary."
+  (cl-pushnew #'jsonian--handle-change before-change-functions)
   (unless jsonian--cache
     (setq jsonian--cache (make-jsonian--cache))))
 
@@ -1235,7 +1243,7 @@ string or a integer.  Point is a char location."
        '(jsonian--font-lock-keywords
          nil nil nil nil
          (font-lock-syntactic-face-function . jsonian--syntactic-face)))
-  (add-to-list 'before-change-functions #'jsonian--handle-change)
+  (cl-pushnew #'jsonian--handle-change before-change-functions)
   (advice-add #'narrow-to-defun :before-until #'jsonian--correct-narrow-to-defun))
 
 (defun jsonian--syntactic-face (state)
