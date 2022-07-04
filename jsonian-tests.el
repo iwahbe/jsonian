@@ -174,6 +174,13 @@ We test that all lines are unchanged"
              '("fizz" 4 "some")))
     (should (= (point) (point-min)))))
 
+(ert-deftest jsonian-path-with-null ()
+  (with-file-and-point "path-with-null" (point-min)
+    (should (equal
+             (jsonian-path nil 19)
+             '("b")))
+    (should (= (point) (point-min)))))
+
 (ert-deftest jsonian-simple-segment ()
   "Check that we correctly identify simple segments."
   (mapc

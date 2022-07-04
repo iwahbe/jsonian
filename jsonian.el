@@ -180,6 +180,8 @@ Otherwise it will parse back to the beginning of the file."
                (jsonian--backward-true))
               ;; Boolean literal: false
               ((eq (char-before) ?e) (jsonian--backward-false))
+              ;; null literal
+              ((eq (char-before) ?l) (jsonian--backward-null))
               ((bobp) (cl-return nil))
               (t  (user-error "`jsonian--path': Unexpected character '%s'" (if (bobp) "BOB" (format "%c" (char-before)))))))))
 
@@ -420,6 +422,7 @@ and ARG2."
 
 (jsonian--defun-traverse "true")
 (jsonian--defun-traverse "false")
+(jsonian--defun-traverse "null")
 
 (jsonian--defun-traverse whitespace (x)
   (or (= x ?\ )
