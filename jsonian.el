@@ -180,6 +180,8 @@ Otherwise it will parse back to the beginning of the file."
                (jsonian--backward-true))
               ;; Boolean literal: false
               ((eq (char-before) ?e) (jsonian--backward-false))
+              ;; null literal
+              ((eq (char-before) ?l) (jsonian--backward-null))
               ((bobp) (cl-return nil))
               (t  (user-error "`jsonian--path': Unexpected character '%s'" (if (bobp) "BOB" (format "%c" (char-before)))))))))
 
@@ -420,6 +422,7 @@ and ARG2."
 
 (jsonian--defun-traverse "true")
 (jsonian--defun-traverse "false")
+(jsonian--defun-traverse "null")
 
 (jsonian--defun-traverse whitespace (x)
   (or (= x ?\ )
@@ -1401,9 +1404,15 @@ designed to be installed with `advice-add' and `:before-until'."
     (jsonian-narrow-to-defun arg)
     t))
 
- (defun jsonian-unload-function ()
+(defvar jsonian--so-long-predicate nil
+  "The function originally assigned to `so-long-predicate'.")
+
+(defun jsonian-unload-function ()
   "Unload `jsonian'."
-  (advice-remove #'narrow-to-defun #'jsonian--correct-narrow-to-defun))
+  (advice-remove #'narrow-to-defun #'jsonian--correct-narrow-to-defun)
+  (defvar so-long-predicate)
+  (when jsonian--so-long-predicate
+    (setq so-long-predicate jsonian--so-long-predicate)))
 
 
 ;; The major mode for jsonian-c mode.
@@ -1461,10 +1470,11 @@ designed to be installed with `advice-add' and `:before-until'."
   (unless (boundp 'so-long-predicate)
     (user-error "`so-long' mode needs to be loaded"))
   (defvar so-long-predicate)
+  (setq jsonian--so-long-predicate so-long-predicate)
   (setq so-long-predicate
         (lambda ()
           (unless (eq major-mode 'jsonian-mode)
-            (funcall so-long-predicate)))))
+            (funcall jsonian--so-long-predicate)))))
 
 
 ;; Miscellaneous utility functions
