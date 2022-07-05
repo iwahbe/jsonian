@@ -1397,14 +1397,43 @@ ARG is currently ignored."
 ARG is passed onto `jsonian-narrow-to-defun'.  This function is
 designed to be installed with `advice-add' and `:before-until'."
   (interactive)
-  (let ((correct (eq major-mode 'jsonian-mode)))
-    (when correct
-      (jsonian-narrow-to-defun arg))
-    correct))
+  (when (derived-mode-p 'jsonian-mode)
+    (jsonian-narrow-to-defun arg)
+    t))
 
-(defun jsonian-unload-function ()
+ (defun jsonian-unload-function ()
   "Unload `jsonian'."
   (advice-remove #'narrow-to-defun #'jsonian--correct-narrow-to-defun))
+
+
+;; The major mode for jsonian-c mode.
+
+(defvar jsonian-c-syntax-table
+  (let ((s (make-syntax-table jsonian-syntax-table)))
+    ;; We set / to be a punctuation character with the following additional
+    ;; properties:
+    ;; 1 -> The first character to begin a (class a|b) comment
+    ;; 2 -> The second character to begin a (class a) comment
+    ;; 4 -> The second character to end a (class a|b) comment
+    (modify-syntax-entry ?/ ". 124" s)
+    ;; \n ends (class a) comments
+    (modify-syntax-entry ?\n "> " s)
+    ;; * is a punctuation character as well as:
+    ;; 2 -> The second character to begin a (class b) comment
+    ;; 3 -> The first character to end a (class b) comment
+    ;; b -> Only effect class b
+    (modify-syntax-entry ?* ". 23b" s)
+    s)
+  "The syntax table for jsonian-c-mode.")
+
+(define-derived-mode jsonian-c-mode jsonian-mode "JSONC"
+  "A major mode for editing JSON documents with comments."
+  :syntax-table jsonian-c-syntax-table
+  :group 'jsonian ;; TODO: define subgroup for jsonian-c-mode
+  (set (make-local-variable 'comment-start) "// ")
+  (set (make-local-variable 'comment-add) 1)
+  (set (make-local-variable 'font-lock-syntax-table)
+       jsonian-c-syntax-table))
 
 
 ;; Foreign integration

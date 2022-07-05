@@ -2,3 +2,4 @@
 *.elc
 lint.log
 bin
+test-assets/large-json-file.json
