@@ -435,53 +435,56 @@ and ARG2."
        (>= x ?0)))
 
 (defun jsonian--enclosing-comment-p (pos)
-  "Check if POS is inside comment deliminators.
-This function acts on the `char-before' character.
-This is confusing behavior. For example:
-  [ 1, 2, /* 42 */ 3 ]
-          ^
-is not in a comment, since it is part of the comment deliminator."
-  (when (derived-mode-p 'jsonian-c-mode)
-    (let ((s (save-excursion (syntax-ppss pos))))
-      (when (nth 4 s)
-        (nth 8 s)))))
+  "Check if POS is inside comment delimiters.
+If in a comment, the first char before the comment deliminator is
+returned."
+  (when (and (derived-mode-p 'jsonian-c-mode)
+             (>= pos (point-min))
+             (<= pos (point-max)))
+    (save-excursion
+;; The behavior of `syntax-ppss' is worth considering.
+;; This is confusing behavior.  For example:
+;;   [ 1, 2, /* 42 */ 3 ]
+;;           ^
+;; is not in a comment, since it is part of the comment deliminator.
+      (let ((s (syntax-ppss pos)))
+        (cond
+         ;; We are in a comment body
+         ((nth 4 s) (nth 8 s))
+         ;; We are between the characters of a two character comment opener.
+         ((and
+           (eq (char-before pos) ?/)
+           (or
+            (eq (char-after pos) ?/)
+            (eq (char-after pos) ?*))
+           (< pos (point-max)))
+          ;; we still do the syntax check, because we might be in a string
+          (setq s (syntax-ppss (1+ pos)))
+          (when (nth 4 s)
+            (nth 8 s)))
+         ;; We are between the ending characters of a comment.
+         ((and
+           (eq (char-before pos) ?*)
+           (eq (char-after pos) ?/)
+           (> pos (point-min)))
+          ;; we still do the syntax check, because we might be in a string
+          (setq s (syntax-ppss (1- pos)))
+          (when (nth 4 s)
+            (nth 8 s))))))))
 
 (defun jsonian--forward-comment ()
   "Traverse forward out of a comment."
-  (while (cond
-          ((jsonian--enclosing-comment-p (point)) t)
-          ((and (eq (char-after) ?/)
-                (or
-                 (eq (char-after (1+ (point))) ?*)
-                 (eq (char-after (1+ (point))) ?/))
-                (jsonian--enclosing-comment-p (+ 2 (point))))
-           t)
-          ((and
-            (or
-             (eq (char-after) ?*)
-             (eq (char-after) ?/))
-           (jsonian--enclosing-comment-p (1+ (point))))
-           t))
+  (while (or
+          (jsonian--enclosing-comment-p (point))
+          (jsonian--enclosing-comment-p (1+ (point))))
     (goto-char (1+ (point)))))
 
 (defun jsonian--backward-comment ()
   "Traverse backward out of a comment."
   ;; In the body of a comment
-  (if-let (start (jsonian--enclosing-comment-p (point)))
-      (goto-char start)
-    ;; In the start of a comment after both opening chars
-    (if (and (or
-              (eq (char-before) ?/)
-              (eq (char-before) ?*))
-             (eq (char-before (1- (point))) ?/))
-        (goto-char (- (point) 2))
-      ;; In the start of a comment, between the opening chars
-      (when (and
-             (eq (char-before) ?/)
-             (or
-              (eq (char-after) ?/)
-              (eq (char-after) ?*)))
-        (goto-char (1- (point)))))))
+  (if-let (start (or (jsonian--enclosing-comment-p (point))
+                     (jsonian--enclosing-comment-p (1- (point)))))
+      (goto-char start)))
 
 (defun jsonian--forward-to-significant-char ()
   "Traverse forward to the next significant character."
@@ -1499,6 +1502,9 @@ designed to be installed with `advice-add' and `:before-until'."
     (modify-syntax-entry ?* ". 23b" s)
     s)
   "The syntax table for jsonian-c-mode.")
+
+;;;###autoload
+(add-to-list 'auto-mode-alist '("\\.jsonc\\'" . jsonian-c-mode))
 
 (define-derived-mode jsonian-c-mode jsonian-mode "JSONC"
   "A major mode for editing JSON documents with comments."
