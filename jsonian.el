@@ -46,6 +46,11 @@
 (require 'json)
 (require 'seq)
 
+(defgroup jsonian nil
+  "A major mode for editing JSON."
+  :prefix 'jsonian- :group 'languages
+  :link `(url-link :tag "GitHub" "https://github.com/iwahbe/jsonian"))
+
 (defcustom jsonian-ignore-font-lock nil
   "Prevent `font-lock' based optimizations.
 Don't use `font-lock-string-face' and `font-lock-keyword-face' to
@@ -64,6 +69,10 @@ nil means that `jsonian-mode' will infer the correct indentation."
   "The default number of spaces per indent for when it cannot be inferred."
   :type 'integer
   :group 'jsonian)
+
+(defgroup jsonian-c nil
+  "A major mode for editing JSON with comments."
+  :prefix "jsonian-c-" :group 'jsonian)
 
 
 ;; Manipulating and verifying JSON paths.
@@ -1509,7 +1518,7 @@ designed to be installed with `advice-add' and `:before-until'."
 (define-derived-mode jsonian-c-mode jsonian-mode "JSONC"
   "A major mode for editing JSON documents with comments."
   :syntax-table jsonian-c-syntax-table
-  :group 'jsonian ;; TODO: define subgroup for jsonian-c-mode
+  :group 'jsonian-c
   (set (make-local-variable 'comment-start) "// ")
   (set (make-local-variable 'comment-add) 1)
   (set (make-local-variable 'font-lock-syntax-table)
