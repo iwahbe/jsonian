@@ -1514,8 +1514,6 @@ designed to be installed with `advice-add' and `:before-until'."
   "The syntax table for jsonian-c-mode.")
 
 ;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.jsonc\\'" . jsonian-c-mode))
-
 (define-derived-mode jsonian-c-mode jsonian-mode "JSONC"
   "A major mode for editing JSON documents with comments."
   :syntax-table jsonian-c-syntax-table
@@ -1524,6 +1522,9 @@ designed to be installed with `advice-add' and `:before-until'."
   (set (make-local-variable 'comment-add) 1)
   (set (make-local-variable 'font-lock-syntax-table)
        jsonian-c-syntax-table))
+
+;;;###autoload
+(add-to-list 'auto-mode-alist '("\\.jsonc\\'" . jsonian-c-mode))
 
 
 ;; Foreign integration
