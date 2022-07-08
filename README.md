@@ -8,6 +8,8 @@ To that end, all functionality is guarantied to operate on arbitrarily large JSO
 If you find a feature that works only on small files, or is slower then it should be on
 large files, please file an issue.
 
+`jsonian.el` supports standard JSON (`.json`) and JSON with comments (`.jsonc`).
+
 ## Using jsonian
 
 ### Vanilla emacs
@@ -185,7 +187,7 @@ the end of the file and exits. Here is a comparison of the time it takes to
 fontify the whole buffer on a file:
 
 | Package            | Time                                                           | comparison |
-|--------------------|----------------------------------------------------------------|------------|
+| ------------------ | -------------------------------------------------------------- | ---------- |
 | `fundamental-mode` | 8 seconds                                                      | 0.66       |
 | `prog-mode`        | 8 seconds                                                      | 0.66       |
 | `jsonian`          | 12 seconds                                                     | 1          |
