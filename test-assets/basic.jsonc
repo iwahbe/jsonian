@@ -1,0 +1,15 @@
+{
+    "foo": 3,
+    // bar
+    "fizz": {
+        "buzz": [
+            1,
+            5,
+            15
+        ],
+        /*
+        This is a multi-line comment
+        */
+        "rule": "Divisible by 3 or 5."
+    }
+}

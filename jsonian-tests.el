@@ -11,31 +11,54 @@
 (require 'jsonian)
 (require 'ert)
 
+(defun jsonian--test-with-options (path point test setups)
+  "Run a test in various scenarios."
+  (dolist (s setups)
+    (with-temp-buffer
+      (insert-file-contents-literally path)
+      (when (funcall (car s) path)
+        (funcall (cdr s))
+        (setq indent-tabs-mode nil)
+        (goto-char point)
+        (funcall test)))))
+
+(defun jsonian--is-strict-json (path)
+  (string-suffix-p ".json" path))
+
+(defun jsonian--force-lock ()
+  "Force a font lock on the buffer"
+  (setq font-lock-major-mode nil)
+  (syntax-ppss-flush-cache -1)
+  (font-lock-set-defaults)
+  (save-excursion
+    (font-lock-fontify-region (point-min) (point-max))))
+
+(defconst jsonian--test-setups
+  (list
+   (cons #'jsonian--is-strict-json #'jsonian-mode)
+   (cons #'jsonian--is-strict-json (lambda ()
+                                     (jsonian-mode)
+                                     (jsonian--force-lock)))
+   (cons #'identity #'jsonian-c-mode)
+   (cons #'identity (lambda ()
+                      (jsonian-c-mode)
+                      (jsonian--force-lock))))
+  "The standard test scenarios to run against.
+We run the JSONC setup for all files, but we only run the JSON
+setup for strictly JSON files.")
+
 (eval-when-compile
   (defmacro should-point (num)
     `(should (= (point) ,num)))
+
   (defmacro with-file-and-point (file point &rest body)
     "Open the test file named FILE and go to POINT."
     (declare (indent defun))
-    `(progn
-       (with-temp-buffer
-         (insert-file-contents-literally (format "./test-assets/%s.json" ,file))
-         (jsonian-mode)
-         (setq indent-tabs-mode nil)
-         (goto-char ,point)
-         ,@body)
-       (with-temp-buffer
-         (insert-file-contents (format "./test-assets/%s.json" ,file))
-         (jsonian-mode)
-         (setq indent-tabs-mode nil)
-         (progn ;; Force a font lock on the buffer
-           (setq font-lock-major-mode nil)
-           (syntax-ppss-flush-cache -1)
-           (font-lock-set-defaults)
-           (save-excursion
-             (font-lock-fontify-region (point-min) (point-max))))
-         (goto-char ,point)
-         ,@body))))
+    `(jsonian--test-with-options
+      (format "./test-assets/%s" ,file) ,point
+      (lambda ()
+        ,@body)
+      jsonian--test-setups)))
 
 (ert-deftest jsonian--display-path ()
   (should (string=
@@ -94,7 +117,7 @@
     (should (= (char-before) ?s))))
 
 (ert-deftest jsonian--enclosing-item ()
-  (with-file-and-point "path1" 75
+  (with-file-and-point "path1.json" 75
     (jsonian--enclosing-item)
     (should (= (point) 64))
     (jsonian--enclosing-item)
@@ -136,7 +159,7 @@
     (should-point 8)))
 
 (ert-deftest jsonian--traverse-forward ()
-  (with-file-and-point "path1" 44
+  (with-file-and-point "path1.json" 44
     (jsonian--traverse-forward)
     (should-point 49)
     (jsonian--traverse-forward 3)
@@ -146,14 +169,14 @@
 (ert-deftest jsonian-indent-specified ()
   "Load `indent1' and indent each line.
 We test that all lines are unchanged"
-  (with-file-and-point "indent1" (point-min)
+  (with-file-and-point "indent1.json" (point-min)
     (let ((jsonian-indentation 4)
           (file-contents (buffer-string)))
       (dotimes (l (count-lines (point-min) (point-max)))
         (jsonian-indent-line)
         (forward-line))
       (should (string= (buffer-string) file-contents))))
-  (with-file-and-point "path1" (point-min)
+  (with-file-and-point "path1.json" (point-min)
     (let ((jsonian-indentation 4))
       (dotimes (l (count-lines (point-min) (point-max)))
         (jsonian-indent-line)
@@ -168,14 +191,14 @@ We test that all lines are unchanged"
 " (buffer-substring-no-properties (point-min) (point-max)))))))
 
 (ert-deftest jsonian-path ()
-  (with-file-and-point "path1" (point-min)
+  (with-file-and-point "path1.json" (point-min)
     (should (equal
              (jsonian-path nil 75)
              '("fizz" 4 "some")))
     (should (= (point) (point-min)))))
 
 (ert-deftest jsonian-path-with-null ()
-  (with-file-and-point "path-with-null" (point-min)
+  (with-file-and-point "path-with-null.json" (point-min)
     (should (equal
              (jsonian-path nil 19)
              '("b")))
@@ -244,13 +267,13 @@ Specifically, we need to comply with what `completion-boundaries' describes."
 
 (ert-deftest jsonian--array-find-children ()
   "Check that we can find the children of arrays correctly."
-  (with-file-and-point "children1" 7
+  (with-file-and-point "children1.json" 7
     (should (equal
              (jsonian--find-children)
              '((1 . 58) (0 . 35))))))
 
 (ert-deftest jsonian-indent-line ()
-  (with-file-and-point "path1" 107
+  (with-file-and-point "path1.json" 107
     (insert ",")
     (funcall-interactively #'newline-and-indent)
     (should (= (point) 111))))
@@ -258,7 +281,7 @@ Specifically, we need to comply with what `completion-boundaries' describes."
 (ert-deftest jsonian-indered-indent ()
   "Check that we correctly infer the indentation of our test files."
   (mapc (lambda (file)
-          (with-file-and-point file (point-min)
+          (with-file-and-point (concat file ".json") (point-min)
             (let ((file-contents (buffer-string)))
               (dotimes (l (count-lines (point-min) (point-max)))
                 (jsonian-indent-line)
@@ -266,6 +289,11 @@ Specifically, we need to comply with what `completion-boundaries' describes."
               (should (string= (buffer-string) file-contents))))
           )
         '("indent1" "children1" "path1")))
+
+(ert-deftest jsonian-c-path ()
+  "Check that we can get the path in JSONC files."
+  (with-file-and-point "basic.jsonc" 184
+    (should (equal (jsonian-path) '("fizz" "rule")))))
 
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here

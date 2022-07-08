@@ -31,8 +31,9 @@
 ;; - `jsonian-find': A `find-file' style interface to navigating a JSON document.
 ;; - Automatic indentation discovery via `jsonian-indent-line'.
 ;;
-;; When `jsonian' is loaded, it adds itself to `auto-mode-alist'.  This will
-;; overwrite `javascript-mode' by default when opening a .json file.
+;; When `jsonian' is loaded, it adds `jsonian-mode' and `jsonian-c-mode' to `auto-mode-alist'.
+;; This will overwrite `javascript-mode' by default when opening a .json file.  It will
+;; overwrite `fundamental-mode' when opening a .jsonc file
 ;;
 ;; To have `jsonian-mode' activate when any JSON like buffer is opened,
 ;; regardless of the extension, add
@@ -45,6 +46,11 @@
 (require 'cl-lib)
 (require 'json)
 (require 'seq)
+
+(defgroup jsonian nil
+  "A major mode for editing JSON."
+  :prefix "jsonian-" :group 'languages
+  :link `(url-link :tag "GitHub" "https://github.com/iwahbe/jsonian"))
 
 (defcustom jsonian-ignore-font-lock nil
   "Prevent `font-lock' based optimizations.
@@ -64,6 +70,10 @@ nil means that `jsonian-mode' will infer the correct indentation."
   "The default number of spaces per indent for when it cannot be inferred."
   :type 'integer
   :group 'jsonian)
+
+(defgroup jsonian-c nil
+  "A major mode for editing JSON with comments."
+  :prefix "jsonian-c-" :group 'jsonian)
 
 
 ;; Manipulating and verifying JSON paths.
@@ -95,7 +105,7 @@ b. leveraging C code whenever possible."
   (with-current-buffer (or buffer (current-buffer))
     (save-excursion
       (when pos (goto-char pos))
-      (jsonian--forward-whitespace)
+      (jsonian--forward-to-significant-char)
       (jsonian--correct-starting-point)
       (let ((result (jsonian--reconstruct-path (jsonian--path t nil))) display)
         (when (called-interactively-p 'interactive)
@@ -116,7 +126,7 @@ Otherwise it will parse back to the beginning of the file."
     ;; We are not in the middle of a string, so we can now safely check for
     ;; the string property without false positives.
     (cl-loop 'while (not (bobp))
-             (jsonian--backward-whitespace)
+             (jsonian--backward-to-significant-char)
              (cond
               ;; Enclosing object
               ((eq (char-before) ?\{)
@@ -149,7 +159,7 @@ Otherwise it will parse back to the beginning of the file."
               ;; Object tag
               ((eq (char-before) ?:)
                (backward-char)
-               (jsonian--backward-whitespace)
+               (jsonian--backward-to-significant-char)
                (unless (eq (char-before) ?\")
                  (user-error "Before ':' expected '\"', found '%s'" (if (bobp) "BOB" (char-before))))
                (let* ((tag-region (jsonian--backward-string 'font-lock-keyword-face))
@@ -283,7 +293,7 @@ it traverses existing structures in the buffer JSON.  It does not
 need to be a leaf path."
   (save-excursion
     (goto-char (point-min))
-    (jsonian--forward-whitespace)
+    (jsonian--forward-to-significant-char)
     (let (failed leaf current-segment traversed)
       (while (and path (not failed) (not leaf))
         (unless (seq-some
@@ -320,9 +330,9 @@ If ARG is not nil, move to the ARGth enclosing item."
   (while (and (> arg 0) (jsonian--enclosing-item))
     (cl-decf arg 1))
   (when (and (= arg 0) (jsonian--after-key (point)))
-    (jsonian--backward-whitespace)
+    (jsonian--backward-to-significant-char)
     (backward-char)
-    (jsonian--backward-whitespace)
+    (jsonian--backward-to-significant-char)
     (jsonian--backward-string))
   (= arg 0))
 
@@ -332,7 +342,7 @@ If ARG is not nil, move to the ARGth enclosing item."
     (let ((opening (point)))
       (when (not (bobp))
         (backward-char)
-        (jsonian--backward-whitespace)
+        (jsonian--backward-to-significant-char)
         (if (not (= (char-after) ?:))
             (goto-char opening)
           (when (not (bobp))
@@ -433,6 +443,74 @@ and ARG2."
 (jsonian--defun-traverse number (x)
   (and (<= x ?9)
        (>= x ?0)))
+
+(defun jsonian--enclosing-comment-p (pos)
+  "Check if POS is inside comment delimiters.
+If in a comment, the first char before the comment deliminator is
+returned."
+  (when (and (derived-mode-p 'jsonian-c-mode)
+             (>= pos (point-min))
+             (<= pos (point-max)))
+    (save-excursion
+;; The behavior of `syntax-ppss' is worth considering.
+;; This is confusing behavior.  For example:
+;;   [ 1, 2, /* 42 */ 3 ]
+;;           ^
+;; is not in a comment, since it is part of the comment deliminator.
+      (let ((s (syntax-ppss pos)))
+        (cond
+         ;; We are in a comment body
+         ((nth 4 s) (nth 8 s))
+         ;; We are between the characters of a two character comment opener.
+         ((and
+           (eq (char-before pos) ?/)
+           (or
+            (eq (char-after pos) ?/)
+            (eq (char-after pos) ?*))
+           (< pos (point-max)))
+          ;; we still do the syntax check, because we might be in a string
+          (setq s (syntax-ppss (1+ pos)))
+          (when (nth 4 s)
+            (nth 8 s)))
+         ;; We are between the ending characters of a comment.
+         ((and
+           (eq (char-before pos) ?*)
+           (eq (char-after pos) ?/)
+           (> pos (point-min)))
+          ;; we still do the syntax check, because we might be in a string
+          (setq s (syntax-ppss (1- pos)))
+          (when (nth 4 s)
+            (nth 8 s))))))))
+
+(defun jsonian--forward-comment ()
+  "Traverse forward out of a comment."
+  (while (or
+          (jsonian--enclosing-comment-p (point))
+          (jsonian--enclosing-comment-p (1+ (point))))
+    (goto-char (1+ (point)))))
+
+(defun jsonian--backward-comment ()
+  "Traverse backward out of a comment."
+  ;; In the body of a comment
+  (if-let (start (or (jsonian--enclosing-comment-p (point))
+                     (jsonian--enclosing-comment-p (1- (point)))))
+      (goto-char start)))
+
+(defun jsonian--forward-to-significant-char ()
+  "Traverse forward to the next significant character."
+  (let (prev)
+    (while (not (eq prev (point)))
+      (setq prev (point))
+      (jsonian--forward-whitespace)
+      (jsonian--forward-comment))))
+
+(defun jsonian--backward-to-significant-char ()
+  "Traverse backward to the previous significant character."
+  (let (prev)
+    (while (not (eq prev (point)))
+      (setq prev (point))
+      (jsonian--backward-whitespace)
+      (jsonian--backward-comment))))
 
 (defun jsonian--backward-string (&optional expected-face)
   "Move back a string, starting at the ending \".
@@ -646,7 +724,7 @@ PROPERTY defaults to `face'."
     (jsonian--correct-starting-point)
     (when (eq (char-after) ?,) (setq n (1+ n)))
     (while (and (> n 0) (not done))
-      (jsonian--forward-whitespace)
+      (jsonian--forward-to-significant-char)
       (cond
        ((eq (char-after) ?\") (jsonian--forward-string))
        ((eq (char-after) ?:) (forward-char))
@@ -655,10 +733,10 @@ PROPERTY defaults to `face'."
        ((eq (char-after) ?\{) (forward-list))
        ((eq (char-after) ?\[) (forward-list))
        ((and (>= (char-after) ?0) (<= (char-after) ?9)) (jsonian--forward-number))
-       ((eq (char-after) ?,) (setq n (1- n)) (forward-char) (jsonian--forward-whitespace))
+       ((eq (char-after) ?,) (setq n (1- n)) (forward-char) (jsonian--forward-to-significant-char))
        ((or (eq (char-after) ?\]) (= (char-after) ?\})) (setq done t))
        (t (user-error "`jsonian--traverse-forward': Unexpected character '%c'" (char-after)))))
-    (jsonian--forward-whitespace)
+    (jsonian--forward-to-significant-char)
     (not done)))
 
 (defun jsonian--at-collection (pos)
@@ -675,9 +753,9 @@ If there is no collection after point, return nil."
    ((eq (char-after) ?\")
     (if-let (end (jsonian--pos-in-keyp t))
         (progn (goto-char end)
-               (jsonian--forward-whitespace)
+               (jsonian--forward-to-significant-char)
                (forward-char) ;; go past the `:'
-               (jsonian--forward-whitespace)
+               (jsonian--forward-to-significant-char)
                ;; and then the underlying value
                (when (or (eq (char-after) ?\[)
                          (eq (char-after) ?\{))
@@ -1120,9 +1198,9 @@ is returned."
       (goto-char pos)
       (if-let (end (jsonian--pos-in-keyp t))
           (progn (goto-char end)
-                          (jsonian--forward-whitespace)
+                          (jsonian--forward-to-significant-char)
                           (forward-char)
-                          (jsonian--forward-whitespace)
+                          (jsonian--forward-to-significant-char)
                           (jsonian--node-type (point)))
         "string")))
    ((or (eq (char-after pos) ?t)
@@ -1144,9 +1222,9 @@ is returned."
       (goto-char pos)
       (if-let (end (jsonian--pos-in-keyp t))
           (progn (goto-char end)
-                          (jsonian--forward-whitespace)
+                          (jsonian--forward-to-significant-char)
                           (forward-char)
-                          (jsonian--forward-whitespace)
+                          (jsonian--forward-to-significant-char)
                           (jsonian--node-preview (point)))
         (jsonian--forward-string)
         (buffer-substring pos (point)))))
@@ -1181,7 +1259,7 @@ string or a integer.  Point is a char location."
   ;; buffer, there is nothing there, so stop.
   (when (and (jsonian--enclosing-item) (not (eobp)))
     (forward-char) ;; Go the the beginning of the first element in the enclosing object
-    (jsonian--forward-whitespace)
+    (jsonian--forward-to-significant-char)
     ;; If we are at the end of the object, stop
     (unless (or (eq (char-after) ?\})
                 (eq (char-after) ?\]))
@@ -1279,7 +1357,7 @@ JSON font lock syntactic face function."
     ;; We examine the line above ours, under the assumption that it is correctly
     ;; formatted.
     (forward-line -1)
-    (jsonian--forward-whitespace)
+    (jsonian--forward-to-significant-char)
     ;; Find the column we start at
     (let* ((start (current-column))
            ;; FInd another column
@@ -1302,7 +1380,7 @@ JSON font lock syntactic face function."
                   ;; Move into the document and see the indentation level of the first item.
                   (forward-char)
                   (jsonian--enter-collection)
-                  (jsonian--forward-whitespace)
+                  (jsonian--forward-to-significant-char)
                   (current-column))))
       (- (max start end) (min start end)))))
 
@@ -1331,7 +1409,7 @@ spaces in each indentation level."
     (let ((level 0))
       (save-excursion ;; The previous line - end
         (end-of-line 0) ;;Roll backward to the end of the previous line
-        (jsonian--backward-whitespace)
+        (jsonian--backward-to-significant-char)
         (when (or (eq (char-before) ?\{)
                   (eq (char-before) ?\[))
           ;; If it is a opening \{ or \[, the next line should be indented by 1
@@ -1400,10 +1478,9 @@ ARG is currently ignored."
 ARG is passed onto `jsonian-narrow-to-defun'.  This function is
 designed to be installed with `advice-add' and `:before-until'."
   (interactive)
-  (let ((correct (eq major-mode 'jsonian-mode)))
-    (when correct
-      (jsonian-narrow-to-defun arg))
-    correct))
+  (when (derived-mode-p 'jsonian-mode)
+    (jsonian-narrow-to-defun arg)
+    t))
 
 (defvar jsonian--so-long-predicate nil
   "The function originally assigned to `so-long-predicate'.")
@@ -1414,6 +1491,39 @@ designed to be installed with `advice-add' and `:before-until'."
   (defvar so-long-predicate)
   (when jsonian--so-long-predicate
     (setq so-long-predicate jsonian--so-long-predicate)))
+
+
+;; The major mode for jsonian-c mode.
+
+(defvar jsonian-c-syntax-table
+  (let ((s (make-syntax-table jsonian-syntax-table)))
+    ;; We set / to be a punctuation character with the following additional
+    ;; properties:
+    ;; 1 -> The first character to begin a (class a|b) comment
+    ;; 2 -> The second character to begin a (class a) comment
+    ;; 4 -> The second character to end a (class a|b) comment
+    (modify-syntax-entry ?/ ". 124" s)
+    ;; \n ends (class a) comments
+    (modify-syntax-entry ?\n "> " s)
+    ;; * is a punctuation character as well as:
+    ;; 2 -> The second character to begin a (class b) comment
+    ;; 3 -> The first character to end a (class b) comment
+    ;; b -> Only effect class b
+    (modify-syntax-entry ?* ". 23b" s)
+    s)
+  "The syntax table for jsonian-c-mode.")
+
+;;;###autoload
+(add-to-list 'auto-mode-alist '("\\.jsonc\\'" . jsonian-c-mode))
+
+(define-derived-mode jsonian-c-mode jsonian-mode "JSONC"
+  "A major mode for editing JSON documents with comments."
+  :syntax-table jsonian-c-syntax-table
+  :group 'jsonian-c
+  (set (make-local-variable 'comment-start) "// ")
+  (set (make-local-variable 'comment-add) 1)
+  (set (make-local-variable 'font-lock-syntax-table)
+       jsonian-c-syntax-table))
 
 
 ;; Foreign integration
