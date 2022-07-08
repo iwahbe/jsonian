@@ -49,7 +49,7 @@
 
 (defgroup jsonian nil
   "A major mode for editing JSON."
-  :prefix 'jsonian- :group 'languages
+  :prefix "jsonian-" :group 'languages
   :link `(url-link :tag "GitHub" "https://github.com/iwahbe/jsonian"))
 
 (defcustom jsonian-ignore-font-lock nil
