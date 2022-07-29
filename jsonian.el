@@ -71,6 +71,13 @@ nil means that `jsonian-mode' will infer the correct indentation."
   :type 'integer
   :group 'jsonian)
 
+(defcustom jsonian-fixup-comma t
+  "If commas should be fixed as you type.
+The fixup only happens based on the current and previous line.
+The fixup is only triggered as part of indentation."
+  :type 'boolean
+  :group 'jsonian)
+
 (defgroup jsonian-c nil
   "A major mode for editing JSON with comments."
   :prefix "jsonian-c-" :group 'jsonian)
@@ -484,9 +491,11 @@ returned."
 
 (defun jsonian--forward-comment ()
   "Traverse forward out of a comment."
-  (while (or
-          (jsonian--enclosing-comment-p (point))
-          (jsonian--enclosing-comment-p (1+ (point))))
+  (while (and
+          (or
+           (jsonian--enclosing-comment-p (point))
+           (jsonian--enclosing-comment-p (1+ (point))))
+          (not (eobp)))
     (goto-char (1+ (point)))))
 
 (defun jsonian--backward-comment ()
@@ -1300,10 +1309,11 @@ string or a integer.  Point is a char location."
 
 (defvar jsonian-mode-map
   (let ((km (make-sparse-keymap)))
-    (define-key km (kbd "C-c C-p") #'jsonian-path)
-    (define-key km (kbd "C-c C-s") #'jsonian-edit-string)
-    (define-key km (kbd "C-c C-e") #'jsonian-enclosing-item)
-    (define-key km (kbd "C-c C-f") #'jsonian-find)
+    (define-key km (kbd "C-c C-p")  #'jsonian-path)
+    (define-key km (kbd "C-c C-s")  #'jsonian-edit-string)
+    (define-key km (kbd "C-c C-e")  #'jsonian-enclosing-item)
+    (define-key km (kbd "C-c C-f")  #'jsonian-find)
+    (define-key km (kbd "<return>") #'jsonian-newline-and-indent)
     km)
   "The mode-map for `jsonian-mode'.")
 
@@ -1482,15 +1492,78 @@ designed to be installed with `advice-add' and `:before-until'."
     (jsonian-narrow-to-defun arg)
     t))
 
-(defvar jsonian--so-long-predicate nil
+(defun jsonian--correct-missing-comma ()
+  "Ensure that there is a trailing comma on the previous line if necessary."
+  (when (jsonian--previous-line-needs-comma-p)
+    (save-excursion
+      (beginning-of-line)
+      (jsonian--backward-to-significant-char)
+      (insert ",")
+      t)))
+
+(defun jsonian--previous-line-needs-comma-p ()
+  "Check if the previous line needs a comma."
+  (save-excursion
+    (beginning-of-line)
+    (jsonian--forward-to-significant-char)
+    (and
+     (not (eq (char-after) ?\}))
+     (not (eq (char-after) ?\]))
+     (not (eobp))
+     (progn (jsonian--backward-to-significant-char)
+            (not (or (eq (char-before) ?,)
+                     (eq (char-before) ?\{)
+                     (eq (char-before) ?\[)))))))
+
+(defun jsonian--previous-line-extra-comma-p ()
+  "Check if the previous line needs a comma."
+  (save-excursion
+    (beginning-of-line)
+    (jsonian--backward-to-significant-char)
+    (and
+     (eq (char-before) ?,)
+     (progn
+       (jsonian--forward-to-significant-char)
+       (or (eq (char-after) ?\})
+           (eq (char-after) ?\]))))))
+
+(defun jsonian--correct-exta-comma ()
+  "Remove an extra comma on the previous line, if it exists."
+  (when (jsonian--previous-line-extra-comma-p)
+    (save-excursion
+      (beginning-of-line)
+      (jsonian--backward-to-significant-char)
+      (delete-char -1)
+      t)))
+
+(defun jsonian--correct-comma ()
+  "Fix the comma in previous lines.
+If there is a missing comma, add it.  If there is an extra comma,
+remove it."
+  ;; We don't do this when we are looking at a blank line.
+  (when (save-excursion
+          (beginning-of-line)
+          (not (looking-at "[ \t]*$")))
+    (or (jsonian--correct-missing-comma)
+        (jsonian--correct-exta-comma))))
+
+(defun jsonian-newline-and-indent (&optional args)
+  "Fixup the current line, insert a newline, then indent.
+ARGS is passed to `newline-and-indent'."
+  (interactive "*p")
+  (when jsonian-fixup-comma
+    (jsonian--correct-comma))
+  (newline-and-indent args))
+
+(defvar jsonian--so-long-prev-predicate nil
   "The function originally assigned to `so-long-predicate'.")
 
 (defun jsonian-unload-function ()
   "Unload `jsonian'."
   (advice-remove #'narrow-to-defun #'jsonian--correct-narrow-to-defun)
   (defvar so-long-predicate)
-  (when jsonian--so-long-predicate
-    (setq so-long-predicate jsonian--so-long-predicate)))
+  (when jsonian--so-long-prev-predicate
+    (setq so-long-predicate jsonian--so-long-prev-predicate)))
 
 
 ;; The major mode for jsonian-c mode.
@@ -1545,6 +1618,13 @@ designed to be installed with `advice-add' and `:before-until'."
         (flycheck-add-mode (car checkers) 'jsonian-mode))
       (setq checkers (cdr checkers)))))
 
+(defun jsonian--so-long-predicate ()
+  "A named function do ignore jsonian in `so-long-mode'."
+  (unless (or (eq major-mode 'jsonian-mode)
+              (eq jsonian--so-long-prev-predicate
+                  #'jsonian--so-long-predicate))
+    (funcall jsonian--so-long-prev-predicate)))
+
 ;;;###autoload
 (defun jsonian-no-so-long-mode ()
   "Prevent `so-long-mode' from supplanting `jsonian-mode'."
@@ -1552,11 +1632,9 @@ designed to be installed with `advice-add' and `:before-until'."
   (unless (boundp 'so-long-predicate)
     (user-error "`so-long' mode needs to be loaded"))
   (defvar so-long-predicate)
-  (setq jsonian--so-long-predicate so-long-predicate)
-  (setq so-long-predicate
-        (lambda ()
-          (unless (eq major-mode 'jsonian-mode)
-            (funcall jsonian--so-long-predicate)))))
+  (unless (eq so-long-predicate #'jsonian--so-long-predicate)
+    (setq jsonian--so-long-prev-predicate so-long-predicate)
+    (setq so-long-predicate #'jsonian--so-long-predicate)))
 
 
 ;; Miscellaneous utility functions
