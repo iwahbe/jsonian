@@ -1016,9 +1016,9 @@ If PATH is supplied, navigate to it."
                 (completing-read "Select Element: " #'jsonian--find-completion nil t
                                  (save-excursion
                                    (jsonian--correct-starting-point)
-                                   (when-let* ((path (butlast (jsonian--reconstruct-path (jsonian--path t nil))))
+                                   (when-let* ((path (jsonian--reconstruct-path (jsonian--path t nil)))
                                                (display (jsonian--display-path path t)))
-                                     (concat display (jsonian--type-index-string (jsonian--node-type (jsonian--valid-path path))))))))))
+                                     display))))))
       ;; We know that the path is valid since we chose it from the list of valid paths presented
       (goto-char (jsonian--valid-path (jsonian--parse-path selection)))))
 
@@ -1108,8 +1108,8 @@ PATHS is the list of returned paths."
 
 (defun jsonian--completing-nil (path &optional predicate)
   "The nil component of `jsonian--find-completion'.
-PATH is a a list of path segments.  PREDICATE is a function that
-filters values It takes a string as argument.  According to the
+PATH is a a list of path segments. PREDICATE is a function that
+filters values. It takes a string as argument. According to the
 docs: The function should return nil if there are no matches; it
 should return t if the specified string is a unique and exact
 match; and it should return the longest common prefix substring
