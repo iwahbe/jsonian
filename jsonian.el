@@ -1085,7 +1085,11 @@ PATHS is the list of returned paths."
             (prefix (jsonian--display-segment-end segment)))
       (sort
        (seq-filter (apply-partially #'string-prefix-p prefix) paths)
-       (lambda (x y) (< (string-distance prefix x) (string-distance prefix y))))
+       (if (seq-every-p (apply-partially #'string-match-p "^[0-9]+\]$") paths)
+           ;; We are in an array, and indexes are numbers like "42]". We should sort them low to high.
+           (lambda (x y) (< (string-to-number x) (string-to-number y)))
+         ;; We are in a map, our keys are arbitrary strings, we should sort by edit distance.
+         (lambda (x y) (< (string-distance prefix x) (string-distance prefix y)))))
     paths))
 
 (defun jsonian--completing-t (path predicate)
@@ -1108,8 +1112,8 @@ PATHS is the list of returned paths."
 
 (defun jsonian--completing-nil (path &optional predicate)
   "The nil component of `jsonian--find-completion'.
-PATH is a a list of path segments. PREDICATE is a function that
-filters values. It takes a string as argument. According to the
+PATH is a a list of path segments.  PREDICATE is a function that
+filters values.  It takes a string as argument.  According to the
 docs: The function should return nil if there are no matches; it
 should return t if the specified string is a unique and exact
 match; and it should return the longest common prefix substring
