@@ -1055,7 +1055,7 @@ PREFIX is the string currently being completed against.
 CACHE is the value of `jsonian--cache' for the buffer being completed against."
   (let ((max-value (+ 8 (seq-reduce #'max (seq-map #'length paths) 0))))
     (mapcar (lambda (path)
-              (let* ((is-index (string-match-p "^[0-9]\\]$" path))
+              (let* ((is-index (string-match-p "^[0-9]+\\]$" path))
                      (full-path (append
                                  (butlast (jsonian--parse-path prefix))
                                  (jsonian--parse-path
