@@ -204,6 +204,14 @@ We test that all lines are unchanged"
              '("b")))
     (should (= (point) (point-min)))))
 
+(ert-deftest jsonian-find-with-null ()
+  "Test that we can use `jsonian-find' with null values.
+This is different then `jsonian-path-with-null' because it tests
+cached descent, instead of ascent."
+  (with-file-and-point "path-with-null.json" (point-min)
+    (should (= (jsonian-find ".b") 18))
+    (should (= (jsonian-find ".a") 5))))
+
 (ert-deftest jsonian-simple-segment ()
   "Check that we correctly identify simple segments."
   (mapc
