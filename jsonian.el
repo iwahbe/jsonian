@@ -122,7 +122,7 @@ ALLOW-TAGS is non nil.  When STOP-AT-VALID is non-nil,
 Otherwise it will parse back to the beginning of the file."
   ;; The number of previously encountered objects in this list (if we
   ;; are in a list).
-  (let ((index 0) close)
+  (let ((index 0))
     ;; We are not in the middle of a string, so we can now safely check for
     ;; the string property without false positives.
     (cl-loop 'while (not (bobp))
@@ -130,10 +130,11 @@ Otherwise it will parse back to the beginning of the file."
              (cond
               ;; Enclosing object
               ((eq (char-before) ?\{)
-               (cl-return
-                (unless stop-at-valid
-                  (backward-char)
-                  (jsonian--path t stop-at-valid))))
+               (if stop-at-valid
+                   (cl-return nil)
+                 (backward-char)
+                 (setq index 0
+                       allow-tags t)))
               ;; Enclosing array
               ((eq (char-before) ?\[)
                (cl-return (cons index
@@ -145,10 +146,10 @@ Otherwise it will parse back to the beginning of the file."
                 (eq (char-before) ?\])
                 (eq (char-before) ?\}))
                (backward-char)
-               (setq close (1- (scan-lists (point) 1 1)))
-               (when (< close (line-end-position))
-                 (goto-char (1+ close))
-                 (backward-list))
+               (let ((close (1- (scan-lists (point) 1 1))))
+                 (when (< close (line-end-position))
+                   (goto-char (1+ close))
+                   (backward-list)))
                (backward-char))
 
               ;; In a list or object
