@@ -130,10 +130,10 @@ Otherwise it will parse back to the beginning of the file."
              (cond
               ;; Enclosing object
               ((eq (char-before) ?\{)
-               (cl-return (cons 'object
-                                (unless stop-at-valid
-                                  (backward-char)
-                                  (jsonian--path t stop-at-valid)))))
+               (cl-return
+                (unless stop-at-valid
+                  (backward-char)
+                  (jsonian--path t stop-at-valid))))
               ;; Enclosing array
               ((eq (char-before) ?\[)
                (cl-return (cons index
@@ -272,17 +272,11 @@ A segment is considered simple if and only if it does not contain any
 
 (defun jsonian--reconstruct-path (input)
   "Cleanup INPUT as the result of `jsonian--path'."
-  (let (path seen-key)
+  (let (path)
     (seq-do (lambda (element)
-              (cond
-               ((stringp element)
-                (unless seen-key (setq path (cons element path)
-                                       seen-key t)))
-               ((equal element 'object) ;; A marker element, does nothing
-                (setq seen-key nil))
-               (t
-                (setq seen-key nil
-                      path (cons element path)))))
+              (if (or (stringp element) (numberp element))
+                  (setq path (cons element path))
+                (error "Unexpected element %s of type %s" element (type-of element))))
             input)
     path))
 
@@ -354,11 +348,10 @@ If ARG is not nil, move to the ARGth enclosing item."
 (defun jsonian--enclosing-object-or-array ()
   "Go to the enclosing object/array of `point'."
   (jsonian--correct-starting-point)
-  (let ((result (car-safe (jsonian--path nil t))))
-    (when (or (numberp result)
-              (equal result 'object))
-      (unless (bobp) (backward-char))
-      result)))
+  (jsonian--path nil t)
+  (when (member (char-before) '(?\[ ?\{))
+    (unless (bobp) (backward-char))
+    t))
 
 (defmacro jsonian--defun-predicate-traversal (name arg-list predicate)
   "Define `jsonian--forward-NAME' and `jsonian--backward-NAME'.
