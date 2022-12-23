@@ -12,7 +12,17 @@
 (require 'ert)
 
 (defun jsonian--test-with-options (path point test setups)
-  "Run a test in various scenarios."
+  "Run a test against `jsonian-mode'.
+
+PATH is the path to the file where the test takes place.
+
+POINT is the starting location of the point during the test.
+
+TEST is a function to run the body of the test.
+
+SETUPS is a list with elements of the form (condition . action).
+The test will be run for each setup given that calling the
+predicate on PATH return a non-nil value."
   (dolist (s setups)
     (with-temp-buffer
       (insert-file-contents-literally path)
@@ -23,10 +33,12 @@
         (funcall test)))))
 
 (defun jsonian--is-strict-json (path)
+  "Check if PATH ends in .json."
   (string-suffix-p ".json" path))
 
 (defun jsonian--force-lock ()
-  "Force a font lock on the buffer"
+  "Force a font lock on the buffer.
+This function should be used only in testing."
   (setq font-lock-major-mode nil)
   (syntax-ppss-flush-cache -1)
   (font-lock-set-defaults)
@@ -47,18 +59,18 @@
 We run the JSONC setup for all files, but we only run the JSON
 setup for strictly JSON files.")
 
-(eval-when-compile
-  (defmacro should-point (num)
-    `(should (= (point) ,num)))
+(defmacro should-point (num)
+  "Assert that NUM equals `point'."
+  `(should (= (point) ,num)))
 
-  (defmacro with-file-and-point (file point &rest body)
-    "Open the test file named FILE and go to POINT."
-    (declare (indent defun))
-    `(jsonian--test-with-options
-      (format "./test-assets/%s" ,file) ,point
-      (lambda ()
-        ,@body)
-      jsonian--test-setups)))
+(defmacro with-file-and-point (file point &rest body)
+  "Open the test file named FILE and go to POINT, then execute BODY."
+  (declare (indent defun))
+  `(jsonian--test-with-options
+    (format "./test-assets/%s" ,file) ,point
+    (lambda ()
+      ,@body)
+    jsonian--test-setups))
 
 (ert-deftest jsonian--display-path ()
   (should (string=
@@ -302,6 +314,31 @@ Specifically, we need to comply with what `completion-boundaries' describes."
   "Check that we can get the path in JSONC files."
   (with-file-and-point "basic.jsonc" 184
     (should (equal (jsonian-path) '("fizz" "rule")))))
+
+(ert-deftest jsonian-nested-array-path ()
+  "Check that `jsonian-path' works in heavily nested arrays."
+  (with-file-and-point "nested1.json" 55
+    (should (equal (jsonian-path) '("arrays" 1 1 1 1 1 1 1 1 1 0)))))
+
+(ert-deftest jsonian-nested-object-path ()
+  "Check that `jsonian-path' works in heavily nested objects."
+  (with-file-and-point "nested1.json" 125
+    (should (equal (jsonian-path) '("objects" "1" "2" "3" "4" "5" "6" "7")))))
+
+(ert-deftest jsonian-nested-mixed-path ()
+  "Check that `jsonian-path' works within objects and arrays."
+  (with-file-and-point "nested1.json" 187
+    (should (equal (jsonian-path) '("mixed" 0 "1" "2" 1 1 "5" 1 "7")))))
+
+(ert-deftest jsonian-compact-path ()
+  "Check that `jsonian-path' works within compact JSON."
+  (with-file-and-point "compact1.json" 36
+    (should (equal (jsonian-path) '(0 "abc" 1 1 "final")))))
+
+(ert-deftest jsonian-expanded-path ()
+  "Check that `jsonian-path' works with more then normal spacing."
+  (with-file-and-point "compact1.json" 91
+    (should (equal (jsonian-path) '(1 "abc" 1 1 "final")))))
 
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here

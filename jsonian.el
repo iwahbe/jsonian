@@ -170,7 +170,6 @@ Otherwise it will parse back to the beginning of the file."
                    (error "Could not find tag"))
                  (when (= (car tag-region) (point-min))
                    (user-error "Before tag '\"%s\"' expected something, found beginning of buffer" tag-text))
-                 (goto-char (1- (car tag-region)))
                  (when allow-tags
                    ;; To avoid blowing the recursion limit, we only collect tags
                    ;; (and recurse on them) when we need to.
