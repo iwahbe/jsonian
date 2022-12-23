@@ -176,12 +176,12 @@ buffer. When the element is selected, jump to that point in the buffer.
 
 #### jsonian-enable-flycheck
 
-Enable ‘jsonian-mode’ for all checkers where ‘json-mode’ is enabled.
+Enable `jsonian-mode` for all checkers where `json-mode` is enabled.
 
 ## Speed comparison against other modes
 
 Part of the promise of `jsonian` is that it will be performant on large files. A
-primitive benchmark is included to the `Makefile`. It opens a very very large
+primitive benchmark is included in the `Makefile`. It opens a very very large
 (42M) JSON file, and then forces emacs to fontify it. It finally moves point to
 the end of the file and exits. Here is a comparison of the time it takes to
 fontify the whole buffer on a file:
