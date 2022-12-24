@@ -340,5 +340,18 @@ Specifically, we need to comply with what `completion-boundaries' describes."
   (with-file-and-point "compact1.json" 91
     (should (equal (jsonian-path) '(1 "abc" 1 1 "final")))))
 
+(ert-deftest jsonian-cache-match ()
+  "Check that `jsonian-path' and `jsonian-find' have matching cache keys."
+  (with-file-and-point "path1.json" 1
+    (should (equal (jsonian-find "fizz[4].some") 66))
+    (forward-char)
+    (let ((path-size (hash-table-count (jsonian--cache-paths jsonian--cache)))
+          (location-size (hash-table-count (jsonian--cache-locations jsonian--cache))))
+      (should (equal (jsonian-path) '("fizz" 4 "some")))
+      (should (equal path-size
+                     (hash-table-count (jsonian--cache-paths jsonian--cache))))
+      (should (equal location-size
+                     (hash-table-count (jsonian--cache-locations jsonian--cache)))))))
+
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here
