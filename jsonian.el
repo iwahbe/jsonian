@@ -461,31 +461,43 @@ and ARG2."
 
 For the definition of a number, see https://www.json.org/json-en.html"
   (let ((point (point)) (valid t))
-    (when (eq (char-after point) ?-) (setq point (1+ point))) ;; Sign
+    (when (equal (char-after point) ?-) (setq point (1+ point))) ;; Sign
     ;; Whole number
-    (if (eq (char-after point) ?0)
+    (if (equal (char-after point) ?0)
         (setq point (1+ point)) ;; Found a zero, the whole part is done
-      (if (and (>= (char-after point) ?1) (<= (char-after point) ?9))
+      (if (and (char-after point)
+               (>= (char-after point) ?1)
+               (<= (char-after point) ?9))
           (setq point (1+ point)) ;; If valid, increment over the first number.
         (setq valid nil)) ;; Otherwise, the number is not valid.
       ;; Parse the remaining whole part of the number
-      (while (and (>= (char-after point) ?0) (<= (char-after point) ?9))
+      (while (and (char-after point)
+                  (>= (char-after point) ?0)
+                  (<= (char-after point) ?9))
         (setq point (1+ point))))
     ;; Fractional
-    (when (eq (char-after point) ?.)
+    (when (equal (char-after point) ?.)
       (setq point (1+ point))
-      (unless (and (>= (char-after point) ?0) (<= (char-after point) ?9))
+      (unless (and (char-after point)
+                   (>= (char-after point) ?0)
+                   (<= (char-after point) ?9))
         (setq valid nil))
-      (while (and (>= (char-after point) ?0) (<= (char-after point) ?9))
+      (while (and (char-after point)
+                  (>= (char-after point) ?0)
+                  (<= (char-after point) ?9))
         (setq point (1+ point))))
     ;; Exponent
     (when (member (char-after point) '(?e ?E))
       (setq point (1+ point))
       (when (member (char-after point) '(?- ?+)) ;; Exponent sign
         (setq point (1+ point)))
-      (unless (and (>= (char-after point) ?0) (<= (char-after point) ?9))
+      (unless (and (char-after point)
+                   (>= (char-after point) ?0)
+                   (<= (char-after point) ?9))
         (setq valid nil))
-      (while (and (>= (char-after point) ?0) (<= (char-after point) ?9))
+      (while (and (char-after point)
+                  (>= (char-after point) ?0)
+                  (<= (char-after point) ?9))
         (setq point (1+ point))))
     (when valid
       (goto-char point)
@@ -497,28 +509,83 @@ For the definition of a number, see https://www.json.org/json-en.html"
 Here we execute the reverse of the flow chart described at
 https://www.json.org/json-en.html:
 
-           !===!
-    +----->| 0 |--------------------------------------+
-    |      !===!                                      |
-    |                                                 |
-    |                                                 v
-    |                        +-----+   !=====!      !===!
->>--+-----------------+----->| 0-9 |-->| 1-9 |----->| - |
-    |                 |      +-----+   !=====!      !===!
-    |                 |         |         ^
-    v                 |         v         |
- +-----+  +-----+  +-----+    +---+    +-----+
- | 0-9 |->| +|- |->| e|E |    | . |--->| 0-9 |
- +-----+  +-----+  +-----+    +---+    +-----+
-
-     exponent component       fraction component    sign
- -------------------------   --------------------  ------
+                                    +-----+   !=====!     !===!    !===!
+>>--+-----+-----------------+---- ->| 0-9 |-->| 1-9 |---->| - |<---| 0 |
+    |     |                 |       +-----+   !=====!     !===!    !===!
+    |     |                 |          |         ^                   ^
+    |     v                 |          v         |                   |
+    |  +-----+  +-----+  +-----+     +---+    +-----+                |
+    |  | 0-9 |->| +|- |->| e|E |  +--| . |--->| 0-9 |                |
+    |  +-----+  +-----+  +-----+  |  +---+    +-----+                |
+    |                             |                                  |
+    |      exponent component     |  fraction component    sign      |
+    |  -------------------------  | --------------------  ------     |
+    |                             v                                  |
+    +-----------------------------+----------------------------------+
 
 The above diagram denotes valid stopping locations with boxes
-outlined with = and !. The flow starts with the >> at the top
+outlined with = and !.  The flow starts with the >> at the middle
 left."
-  ;; TODO: implement flow chart.
-  )
+  (let* ((point (point))
+         (valid-stops
+          (seq-filter
+           #'identity
+           (list
+            (jsonian--backward-exponent point)
+            (jsonian--backward-fraction point)
+            (jsonian--backward-integer point)))))
+    (when valid-stops
+      (goto-char (seq-min valid-stops)))))
+
+(defun jsonian--backward-exponent (point)
+  "Parse backward from POINT assuming an exponent segment of a JSON number."
+  (let (found-number done)
+    (while (and (not done) (char-before point)
+                (<= (char-before point) ?9)
+                (>= (char-before point) ?0))
+      (if (= point (1+ (point-min)))
+          (setq done t)
+        (setq point (1- point)
+              found-number t)))
+    (when found-number ;; We need to see a number for an exponent
+      (when (member (char-before point) '(?+ ?-))
+        (setq point (1- point)))
+      (when (member (char-before point) '(?e ?E))
+        (or (jsonian--backward-fraction (1- point))
+            (jsonian--backward-integer (1- point)))))))
+
+(defun jsonian--backward-fraction (point)
+  "Parse backward from POINT assuming no exponent segment of a JSON number."
+  (let (found-number done)
+    (while (and (not done) (char-before point)
+                (<= (char-before point) ?9)
+                (>= (char-before point) ?0))
+      (if (= point (1+ (point-min)))
+          (setq done t)
+        (setq point (1- point)
+              found-number t)))
+    (when (and found-number (= (char-before point) ?.))
+      (jsonian--backward-integer (1- point)))))
+
+(defun jsonian--backward-integer (point)
+  "Parse backward from POINT assuming you will only find a simple integer."
+  (let (found-number done leading-valid)
+    (when (equal (char-before point) ?0)
+      (setq leading-valid (1- point)))
+    (while (and (not done) (char-before point)
+                (<= (char-before point) ?9)
+                (>= (char-before point) ?0))
+      (setq found-number (char-before point))
+      (unless (eq found-number ?0)
+        (setq leading-valid (1- point)))
+      (if (= point (1+ (point-min)))
+          (setq done t)
+        (setq point (1- point))))
+    (when leading-valid
+      (if (and (char-before leading-valid)
+               (eq (char-before leading-valid) ?-))
+          (1- leading-valid)
+        leading-valid))))
 
 (defun jsonian--enclosing-comment-p (pos)
   "Check if POS is inside comment delimiters.

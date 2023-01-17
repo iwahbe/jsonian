@@ -353,5 +353,32 @@ Specifically, we need to comply with what `completion-boundaries' describes."
       (should (equal location-size
                      (hash-table-count (jsonian--cache-locations jsonian--cache)))))))
 
+(ert-deftest jsonian-parse-numbers ()
+  "Check that `jsonian--backward-integer' parses correctly."
+  (seq-do
+   (lambda (test)
+     (let ((s (car test))
+           (expected (cadr test))
+           (point (caddr test)))
+       (with-temp-buffer
+         (insert s)
+         (let* ((starting (point))
+               (got (not (not (jsonian--backward-number)))))
+           (unless (equal expected got)
+             (ert-fail (format "Test %s failed with output %s" test got)))
+           (should (equal (point) point))
+           (when got
+             (jsonian--forward-number)
+             (should (equal starting (point))))))))
+   '(("123" t 1)
+     ("123e456" t 1)
+     ("123.456e789" t 1)
+     ("1 2" t 3)
+     ("3e" nil 3)
+     (" 1.0" t 2)
+     (" 01.2" t 3)
+     ("00" t 2)
+     ("100.00e00" t 1))))
+
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here
