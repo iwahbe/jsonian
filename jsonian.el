@@ -456,9 +456,69 @@ and ARG2."
       (= x ?\n)
       (= x ?\r)))
 
-(jsonian--defun-traverse number (x)
-  (and (<= x ?9)
-       (>= x ?0)))
+(defun jsonian--forward-number ()
+  "Parse a JSON number forward.
+
+For the definition of a number, see https://www.json.org/json-en.html"
+  (let ((point (point)) (valid t))
+    (when (eq (char-after point) ?-) (setq point (1+ point))) ;; Sign
+    ;; Whole number
+    (if (eq (char-after point) ?0)
+        (setq point (1+ point)) ;; Found a zero, the whole part is done
+      (if (and (>= (char-after point) ?1) (<= (char-after point) ?9))
+          (setq point (1+ point)) ;; If valid, increment over the first number.
+        (setq valid nil)) ;; Otherwise, the number is not valid.
+      ;; Parse the remaining whole part of the number
+      (while (and (>= (char-after point) ?0) (<= (char-after point) ?9))
+        (setq point (1+ point))))
+    ;; Fractional
+    (when (eq (char-after point) ?.)
+      (setq point (1+ point))
+      (unless (and (>= (char-after point) ?0) (<= (char-after point) ?9))
+        (setq valid nil))
+      (while (and (>= (char-after point) ?0) (<= (char-after point) ?9))
+        (setq point (1+ point))))
+    ;; Exponent
+    (when (member (char-after point) '(?e ?E))
+      (setq point (1+ point))
+      (when (member (char-after point) '(?- ?+)) ;; Exponent sign
+        (setq point (1+ point)))
+      (unless (and (>= (char-after point) ?0) (<= (char-after point) ?9))
+        (setq valid nil))
+      (while (and (>= (char-after point) ?0) (<= (char-after point) ?9))
+        (setq point (1+ point))))
+    (when valid
+      (goto-char point)
+      t)))
+
+(defun jsonian--backward-number ()
+  "Parse a JSON number backward.
+
+Here we execute the reverse of the flow chart described at
+https://www.json.org/json-en.html:
+
+           !===!
+    +----->| 0 |--------------------------------------+
+    |      !===!                                      |
+    |                                                 |
+    |                                                 v
+    |                        +-----+   !=====!      !===!
+>>--+-----------------+----->| 0-9 |-->| 1-9 |----->| - |
+    |                 |      +-----+   !=====!      !===!
+    |                 |         |         ^
+    v                 |         v         |
+ +-----+  +-----+  +-----+    +---+    +-----+
+ | 0-9 |->| +|- |->| e|E |    | . |--->| 0-9 |
+ +-----+  +-----+  +-----+    +---+    +-----+
+
+     exponent component       fraction component    sign
+ -------------------------   --------------------  ------
+
+The above diagram denotes valid stopping locations with boxes
+outlined with = and !. The flow starts with the >> at the top
+left."
+  ;; TODO: implement flow chart.
+  )
 
 (defun jsonian--enclosing-comment-p (pos)
   "Check if POS is inside comment delimiters.
