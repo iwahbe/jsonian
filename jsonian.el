@@ -209,8 +209,7 @@ Otherwise it will parse back to the beginning of the file."
               ;; other characters. This ensures the partial parse is strict.
               ;;
               ;; Found a number value, ignore
-              ((and (char-before) (<= (char-before) ?9) (>= (char-before) ?0))
-               (jsonian--backward-number))
+              ((jsonian--backward-number))
               ;;
               ;; Boolean literal: true
               ((and (eq (char-before) ?e)
@@ -509,33 +508,31 @@ For the definition of a number, see https://www.json.org/json-en.html"
 Here we execute the reverse of the flow chart described at
 https://www.json.org/json-en.html:
 
-                                    +-----+   !=====!     !===!    !===!
->>--+-----+-----------------+---- ->| 0-9 |-->| 1-9 |---->| - |<---| 0 |
-    |     |                 |       +-----+   !=====!     !===!    !===!
-    |     |                 |          |         ^                   ^
-    |     v                 |          v         |                   |
-    |  +-----+  +-----+  +-----+     +---+    +-----+                |
-    |  | 0-9 |->| +|- |->| e|E |  +--| . |--->| 0-9 |                |
-    |  +-----+  +-----+  +-----+  |  +---+    +-----+                |
-    |                             |                                  |
-    |      exponent component     |  fraction component    sign      |
-    |  -------------------------  | --------------------  ------     |
-    |                             v                                  |
-    +-----------------------------+----------------------------------+
+                                     +------+    !=====!    !===!    !===!
+>>--+-----+------------------+------>| 0-9* |--->| 1-9 |--->| - |<---| 0 |
+    |     |                  |       +------+    !=====!    !===!    !===!
+    |     |                  |          |           ^                  ^
+    |     v                  |          v           |                  |
+    |  +------+  +-----+  +-----+     +---+     +------+               |
+    |  | 0-9* |->| +|- |->| e|E |  +--| . |---->| 0-9* |               |
+    |  +------+  +-----+  +-----+  |  +---+     +------+               |
+    |                              |                                   |
+    |       exponent component     |  fraction component    sign       |
+    |  --------------------------  | --------------------  ------      |
+    |                              v                                   |
+    +------------------------------+-----------------------------------+
 
 The above diagram denotes valid stopping locations with boxes
 outlined with = and !.  The flow starts with the >> at the middle
 left."
-  (let* ((point (point))
-         (valid-stops
-          (seq-filter
-           #'identity
-           (list
-            (jsonian--backward-exponent point)
-            (jsonian--backward-fraction point)
-            (jsonian--backward-integer point)))))
-    (when valid-stops
-      (goto-char (seq-min valid-stops)))))
+  (when-let ((valid-stops
+              (seq-filter
+               #'identity
+               (list
+                (jsonian--backward-exponent (point))
+                (jsonian--backward-fraction (point))
+                (jsonian--backward-integer (point))))))
+    (goto-char (seq-min valid-stops))))
 
 (defun jsonian--backward-exponent (point)
   "Parse backward from POINT assuming an exponent segment of a JSON number."
@@ -876,7 +873,7 @@ PROPERTY defaults to `face'."
        ((eq (char-after) ?n) (jsonian--forward-null))
        ((eq (char-after) ?\{) (forward-list))
        ((eq (char-after) ?\[) (forward-list))
-       ((and (char-after) (>= (char-after) ?0) (<= (char-after) ?9)) (jsonian--forward-number))
+       ((jsonian--forward-number))
        ((eq (char-after) ?,) (setq n (1- n)) (forward-char) (jsonian--forward-to-significant-char))
        ((or (eq (char-after) ?\]) (eq (char-after) ?\})) (setq done t))
        (t (jsonian--unexpected-char :forward "the beginning of a JSON value"))))
