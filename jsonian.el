@@ -52,7 +52,7 @@
   :prefix "jsonian-" :group 'languages
   :link `(url-link :tag "GitHub" "https://github.com/iwahbe/jsonian"))
 
-(defcustom jsonian-ignore-font-lock nil
+(defcustom jsonian-ignore-font-lock (>= emacs-major-version 29)
   "Prevent `font-lock' based optimizations.
 Don't use `font-lock-string-face' and `font-lock-keyword-face' to
 determine string and key values respectively."

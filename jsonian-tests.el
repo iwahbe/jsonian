@@ -49,10 +49,12 @@ This function should be used only in testing."
   (list
    (cons #'jsonian--is-strict-json #'jsonian-mode)
    (cons #'jsonian--is-strict-json (lambda ()
+				     (setq jsonian-ignore-font-lock nil)
                                      (jsonian-mode)
                                      (jsonian--force-lock)))
    (cons #'identity #'jsonian-c-mode)
    (cons #'identity (lambda ()
+		      (setq jsonian-ignore-font-lock nil)
                       (jsonian-c-mode)
                       (jsonian--force-lock))))
   "The standard test scenarios to run against.
