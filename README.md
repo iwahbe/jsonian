@@ -212,3 +212,16 @@ Notes:
 1. Both `jsonian` and `json-mode` were byte-compiled for this benchmark. Byte
    compiling `jsonian` shaves 6 seconds off of this benchmark.
 2. These benchmarks were taken on a 2.6 GHz 6-Core Intel i7 running macOS Monterey.
+
+## Contributing
+
+Contributions are welcome, both in the form of new
+[Issues](https://github.com/iwahbe/jsonian/issues/new) and PRs. Code contributors agree
+that their contribution falls under the LICENSE.
+
+## Package Status
+
+I use `jsonian-mode` every day, and it works perfectly for my needs. I'm not aware of any
+bugs at this time, nor do I think any important features are missing. Because of this, I'm
+not actively adding new code to the project. The project is not abandon, and I'm happy to
+address bugs or consider new feature requests.
