@@ -132,7 +132,7 @@ This optimization is achieved by
 a. parsing as little of the file as necessary to find the path and
 b. leveraging C code whenever possible.
 
-By default, this command is bound to `C-x C-p`.
+By default, this command is bound to `C-c C-p`.
 
 #### jsonian-edit-string
 
@@ -149,7 +149,7 @@ annoying
 When you return from the buffer, the string is collapsed back into its escaped form
 (preserving edits).
 
-By default, this command is bound to `C-x C-s`.
+By default, this command is bound to `C-c C-s`.
 
 #### jsonian-enclosing-item
 
@@ -167,7 +167,7 @@ point to the `"` at the beginning of `"foo"`. Calling it again would move the
 point to the first `{` on the second line. Calling it a final time would move
 the point to the opening `[`.
 
-By default, this function is bound to `C-x C-e`.
+By default, this function is bound to `C-c C-e`.
 
 #### jsonian-find
 
