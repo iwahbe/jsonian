@@ -59,7 +59,16 @@ determine string and key values respectively."
   :type 'boolean
   :group 'jsonian)
 
+(eval-when-compile
+  (defcustom jsonian-derive-treesit nil
+    "If `jsonian-mode' should derive from `json-ts-mode'.
+
+This variable must be set before `jsonian.el' is loaded to take effect"
+    :type 'boolean
+    :group 'jsonian))
+
 (define-obsolete-variable-alias 'jsonian-spaces-per-indentation 'jsonian-indentation "27.1")
+
 (defcustom jsonian-indentation nil
   "The number of spaces each increase in indentation level indicates.
 nil means that `jsonian-mode' will infer the correct indentation."
@@ -1448,25 +1457,37 @@ string or a integer.  Point is a char location."
     km)
   "The mode-map for `jsonian-mode'.")
 
+(defmacro jsonian--derive-jsonian-mode ()
+  "Define `jsonian-mode', either with or without `treesit' support."
+  `(define-derived-mode jsonian-mode
+     ,(if jsonian-derive-treesit
+          'json-ts-mode 'prog-mode) "JSON"
+     "Major mode for editing JSON files.
+
+\\{jsonian-mode-map}"
+     :group 'jsonian
+     ;; Unless we are borrowing syntax support from `json-ts-mode`, we need to generate it
+     ;; ourselves.
+     ,@(unless jsonian-derive-treesit
+         `(
+           :syntax-table jsonian-syntax-table
+           (set (make-local-variable 'comment-start) "")
+           (set (make-local-variable 'comment-end) "")
+           (set (make-local-variable 'indent-line-function)
+                #'jsonian-indent-line)
+           (set (make-local-variable 'beginning-of-defun-function)
+                #'jsonian-beginning-of-defun)
+           (set (make-local-variable 'end-of-defun-function)
+                #'jsonian-end-of-defun)
+           (set (make-local-variable 'font-lock-defaults)
+                '(jsonian--font-lock-keywords
+                  nil nil nil nil
+                  (font-lock-syntactic-face-function . jsonian--syntactic-face)))))
+     (cl-pushnew #'jsonian--handle-change before-change-functions)
+     (advice-add #'narrow-to-defun :before-until #'jsonian--correct-narrow-to-defun)))
+
 ;;;###autoload
-(define-derived-mode jsonian-mode prog-mode "JSON"
-  "Major mode for editing JSON files."
-  :syntax-table jsonian-syntax-table
-  :group 'jsonian
-  (set (make-local-variable 'comment-start) "")
-  (set (make-local-variable 'comment-end) "")
-  (set (make-local-variable 'indent-line-function)
-       #'jsonian-indent-line)
-  (set (make-local-variable 'beginning-of-defun-function)
-       #'jsonian-beginning-of-defun)
-  (set (make-local-variable 'end-of-defun-function)
-       #'jsonian-end-of-defun)
-  (set (make-local-variable 'font-lock-defaults)
-       '(jsonian--font-lock-keywords
-         nil nil nil nil
-         (font-lock-syntactic-face-function . jsonian--syntactic-face)))
-  (cl-pushnew #'jsonian--handle-change before-change-functions)
-  (advice-add #'narrow-to-defun :before-until #'jsonian--correct-narrow-to-defun))
+(jsonian--derive-jsonian-mode)
 
 (defun jsonian--syntactic-face (state)
   "The syntactic face function for the position represented by STATE.
