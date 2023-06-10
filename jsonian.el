@@ -1457,6 +1457,8 @@ string or a integer.  Point is a char location."
   (set (make-local-variable 'comment-end) "")
   (set (make-local-variable 'indent-line-function)
        #'jsonian-indent-line)
+  (set (make-local-variable 'indent-region-function)
+       #'jsonian-indent-region)
   (set (make-local-variable 'beginning-of-defun-function)
        #'jsonian-beginning-of-defun)
   (set (make-local-variable 'end-of-defun-function)
@@ -1495,35 +1497,49 @@ JSON font lock syntactic face function."
 (defun jsonian--infer-indentation ()
   "Infer the level of indentation at point."
   (save-excursion
-    ;; We examine the line above ours, under the assumption that it is correctly
-    ;; formatted.
-    (forward-line -1)
-    (jsonian--forward-to-significant-char)
-    ;; Find the column we start at
-    (let* ((start (current-column))
-           ;; FInd another column
-           (end (if (jsonian-enclosing-item)
-                    ;; We found an enclosing item, look at its column column
-                    (if (= (current-column) start)
-                        ;; The same as the starting column, We did a jump like from 1 to 2.
-                        ;;   {
-                        ;; -2->"foo": {
-                        ;;       "bar": 3
-                        ;; -1->}
-                        ;;   }
-                        ;; We repeat from 2, ensuring we will return the result of the
-                        ;; next call to `jsonian--infer-indentation'.
-                        (+ (jsonian--infer-indentation)
-                           (current-column))
-                      ;; Not the same as the starting column. This is what we want.
-                      (current-column))
-                  ;; We are not in an item, so we must be at the top level of the document.
-                  ;; Move into the document and see the indentation level of the first item.
-                  (forward-char)
-                  (jsonian--enter-collection)
-                  (jsonian--forward-to-significant-char)
-                  (current-column))))
-      (- (max start end) (min start end)))))
+    (forward-line 0)
+    (let ((indent nil)
+          (origin (point))
+          (done nil)
+          parent-position)
+      (while (not done)
+        (setq parent-position (nth 1 (syntax-ppss)))
+        (if parent-position
+            (progn
+              (setq indent (jsonian--infer-indentation-from-container
+                            parent-position
+                            origin))
+              (if indent
+                  (setq done t)
+                (goto-char parent-position)))
+          (setq done t)))
+      (unless indent
+        (goto-char (point-min))
+        (forward-comment (point-max))
+        (when (memq (char-after) '(?\[ ?{))
+          (setq indent (jsonian--infer-indentation-from-container (point)))))
+      indent)))
+
+(defun jsonian--infer-indentation-from-container
+    (container-position &optional end)
+  "Infer the level of indentation from array/object at CONTAINER-POSITION.
+
+If END is non-nil, inspect only before it."
+  (save-excursion
+    (let (indent)
+      (goto-char container-position)
+      (forward-char)
+      ;; TODO: Should we ignore comments?
+      (skip-chars-forward "\s\t")
+      (when (eolp)
+        (skip-chars-forward "\s\t\n")
+        (when (and (not (memq (char-after) '(?\] ?})))
+                   (or (not end) (< (point) end)))
+          (setq indent (- (current-column)
+                          (progn
+                            (goto-char container-position)
+                            (current-column))))
+          (and (< 0 indent) indent))))))
 
 ;;;###autoload
 (defun jsonian-indent-line ()
@@ -1532,52 +1548,225 @@ The indent is determined by examining the previous line.  The
 number of spaces is determined by `jsonian-indentation' if it is
 set, otherwise it is inferred from the document."
   (interactive)
-  (indent-line-to
-   (jsonian--get-indent-level (or
-                               jsonian-indentation
-                               (if-let* ((indent (jsonian--infer-indentation))
-                                         (not-zero (> indent 0)))
-                                   indent
-                                 jsonian-default-indentation)))))
+  (let* ((indent (or
+                  jsonian-indentation
+                  (if-let* ((indent (jsonian--infer-indentation))
+                            (not-zero (> indent 0)))
+                      indent
+                    jsonian-default-indentation)))
+         (indent-level (jsonian--get-indent-level indent))
+         (current-indent
+          (save-excursion (back-to-indentation) (current-column))))
+    (if (<= (current-column) current-indent)
+        ;; The cursor is on the left margin.  Moving to the new indent.
+        (indent-line-to indent-level)
+      ;; Keeps current relative position.
+      (save-excursion (indent-line-to indent-level)))))
 
-(defun jsonian--get-indent-level (indent)
+(defun jsonian--get-indent-level (indent &optional previous-level parent-level)
   "Find the indentation level of the current line.
 The indentation level of the current line is derived from the
 indentation level of the previous line.  INDENT is the number of
-spaces in each indentation level."
-  (if (= (line-number-at-pos) 1)
-      0
-    (let ((level 0))
-      (save-excursion ;; The previous line - end
-        (end-of-line 0) ;;Roll backward to the end of the previous line
-        (jsonian--backward-to-significant-char)
-        (when (or (eq (char-before) ?\{)
-                  (eq (char-before) ?\[))
-          ;; If it is a opening \{ or \[, the next line should be indented by 1
-          ;; unit
-          (cl-incf level indent))
-        (beginning-of-line)
-        (while (or (eq (char-after) ?\ )
-                   (eq (char-after) ?\t))
+spaces in each indentation level.
+
+If PREVIOUS-LEVEL is non-nil, it is used as the indentation column of
+the previous member.
+
+If PARENT-LEVEL is non-nil, it is used as the indentation column of
+the parent member."
+  (save-excursion
+    (forward-line 0)
+    (if (jsonian--enclosing-comment-p (point))
+        ;; Inside comments.  Keep as is.
+        (current-indentation)
+      (skip-chars-forward "\s\t")
+      (let ((next-char (char-after))
+            previous-char)
+        (cond
+         ;; Indenting a close bracket.
+         ((memq next-char '(?\] ?}))
+          (or parent-level
+              (progn
+                (forward-char)
+                (jsonian--current-indentation))))
+
+         ;; Indenting a colon.
+         ((eq next-char ?:)
+          (+ (or previous-level
+                 (jsonian--current-indentation))
+             indent))
+
+         ;; Otherwise.
+         (t
+          (setq previous-char (save-excursion
+                                (forward-comment (- (point)))
+                                (char-before)))
+          (if (eq previous-char ?:)
+              ;; After a colon.
+              ;;
+              ;; {
+              ;;   "aaa":
+              ;;     111
+              ;; }
+              (+ (or previous-level
+                     (jsonian--current-indentation))
+                 indent)
+            ;; Indening a value.
+            (or previous-level
+                (if (progn
+                      (jsonian--backward-member)
+                      (eq (char-before) ?,))
+                    ;; The current member isn't the first member.
+                    ;; Align to the preceding sibling.
+                    (progn
+                      (backward-char)
+                      (jsonian--current-indentation))
+                  (if (memq (char-before) '(?\[ ?{))
+                      ;; The current member is the first member.
+                      ;; Align to the parent.
+                      (+ (or parent-level
+                             (progn
+                               (backward-char)
+                               (jsonian--current-indentation)))
+                         indent)
+                    ;; Beginning of the buffer.
+                    0))))))))))
+
+(defun jsonian--backward-member ()
+  "Move point to the end of the previous member or open bracket.
+
+After returning from this function, `char-before' should return a comma,
+open brackets, or nil (beginning of the buffer)."
+  (let ((done nil))
+    (while (not done)
+      (skip-chars-backward "^,[]{}\"/\n")
+      (cond
+       ;; Found it.
+       ((or (bobp)
+            (memq (char-before) '(?, ?\[ ?{)))
+        (setq done t))
+
+       ;; Close brackets or strings.
+       ((memq (char-before) '(?\] ?} ?\"))
+        (backward-sexp))
+
+       ;; Maybe comments.
+       ((memq (char-before) '(?/ ?\n))
+        (if (jsonian--enclosing-comment-p (1- (point)))
+            (jsonian--backward-comment)
+          (backward-char)))))))
+
+(defun jsonian--current-indentation ()
+  "Return the indentation level of the current member.
+
+It is the indentation level of the current or preceding member which
+is either at the beginning of a line or at the beginning of the
+containing array/object."
+  (save-excursion
+    ;; FIXME: maybe, we should align to comments at the beginning of a
+    ;; line if any.
+    (jsonian--backward-member)
+    (while (and (save-excursion
+                  (forward-comment (point-max))
+                  (skip-chars-backward "\s\t")
+                  (not (bolp)))
+                (eq (char-before) ?,))
+      (backward-char)
+      (jsonian--backward-member))
+    (forward-comment (point-max))
+    (current-column)))
+
+;;;###autoload
+(defun jsonian-indent-region (start end)
+  "Indent the region from START to END."
+  (interactive "r")
+  (save-excursion
+    (let ((indent (or
+                   jsonian-indentation
+                   (if-let* ((indent (jsonian--infer-indentation))
+                             (not-zero (> indent 0)))
+                       indent
+                     jsonian-default-indentation)))
+          ;; Indent levels of siblings, parent, grand parent, and so on.
+          (levels '())
+          progress
+          next-char
+          parser-state)
+      (setq end (copy-marker end))
+      (goto-char start)
+      (jsonian-indent-line)
+      (when (jsonian--enclosing-comment-p (point))
+        (jsonian--backward-comment))
+      (setq parser-state (syntax-ppss))
+      ;; Exit from a string.
+      (when (nth 3 parser-state)
+        (goto-char (nth 8 parser-state)))
+      (setq progress (make-progress-reporter "Indenting region..." (point) end))
+      ;; Scan forward and indent lines.
+      (while (< (point) end)
+        (progress-reporter-update progress (point))
+        (skip-chars-forward "^[]{}\"/\n")
+        (setq next-char (char-after))
+        (cond
+         ;; Found a new line.  Indent it.  Use cache if available.
+         ;; Otherwise, indent as normal and cache it.
+         ((eq next-char ?\n)
+          (forward-char)
+          (skip-chars-forward "\s\t")
+          ;; Do not indent empty lines.
+          (when (and (not (eolp)) (< (point) end))
+            (if levels
+                (indent-line-to (jsonian--get-indent-level indent
+                                                           (nth 0 levels)
+                                                           (nth 1 levels)))
+              (jsonian-indent-line)
+              (push (jsonian--current-indentation) levels))))
+
+         ;; Open brackets.
+         ((memq next-char '(?\[ ?{))
+          (push
+           ;; If the bracket is at the end of the line, current
+           ;; indentation level + `indent' is the indentation level of
+           ;; children.
+           (if (save-excursion
+                 (forward-char)
+                 (skip-chars-forward "\s\t")
+                 (eolp))
+               (prog1
+                   (+ (if levels
+                          (car levels)
+                        (jsonian--current-indentation))
+                      indent)
+                 (forward-char))
+             ;; Otherwise, this line have the first child, so record
+             ;; its column to the cache.
+             ;;
+             ;; Example:
+             ;; [ 1,
+             ;;   2,
+             ;;   3 ]
+             (forward-char)
+             (skip-chars-forward "\s\t")
+             (current-column))
+           levels))
+
+         ;; Close brackets.
+         ((memq next-char '(?\] ?}))
+          (pop levels)
           (forward-char))
-        (cl-incf level (current-column)))
-      ;; Make sure that we account for any closing brackets in front of (point)
-      (save-excursion
-        (beginning-of-line)
-        ;; We want to be careful here that we only look at this line, and not
-        ;; the next line. Looking at the next line will cause us to go backward
-        ;; when looking at line 2 of the following:
-        ;; 1: {
-        ;; 2:
-        ;; 3: }
-        (while (or
-                (eq (char-after) ? )
-                (eq (char-after) ?\t))
-          (forward-char))
-        (when (or (eq (char-after) ?\})
-                  (eq (char-after) ?\]))
-          (cl-decf level indent)))
-      level)))
+
+         ;; Strings.
+         ((eq next-char ?\")
+          (forward-sexp))
+
+         ;; Maybe comments.
+         ((eq next-char ?/)
+          (if (forward-comment 1)
+              (when (eq (char-before) ?\n)
+                (backward-char))
+            (forward-char)))))
+      (progress-reporter-done progress))
+    (set-marker end nil nil)))
 
 (defun jsonian-beginning-of-defun (&optional arg)
   "Move to the beginning of the smallest object/array enclosing `POS'.
