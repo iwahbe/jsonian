@@ -71,6 +71,13 @@ nil means that `jsonian-mode' will infer the correct indentation."
   :type 'integer
   :group 'jsonian)
 
+(defcustom jsonian-long-line-threshold
+  1000
+  "Threshold of line length to ask if pretty print the buffer."
+  :type 'number
+  :group 'jsonian
+  :safe #'numberp)
+
 (defgroup jsonian-c nil
   "A major mode for editing JSON with comments."
   :prefix "jsonian-c-" :group 'jsonian)
@@ -79,6 +86,68 @@ nil means that `jsonian-mode' will infer the correct indentation."
 (defvar-local jsonian--cache nil
   "The buffer local cache of known locations in the current JSON file.
 `jsonian--cache' is invalidated on buffer change.")
+
+
+;; Macros
+
+(defmacro jsonian--huge-edit (start end &rest body)
+  "Evaluate form BODY with optimizations for huge edits.
+
+Run the change hooks just once like `combine-change-calls'.
+
+Create undo entries as if the contents from START to END are replaced at once.
+
+BODY must not modify buffer outside the region (START END), nor move any markers
+out of the region."
+  (declare (debug (form form def-body)) (indent 2))
+  (let ((start-value (make-symbol "start"))
+        (end-value (make-symbol "end")))
+    `(let ((,start-value ,start)
+           (,end-value ,end))
+       ;; WORKAROUND: If buffer-undo-list is nil, combine-change-calls shows
+       ;; unnecessary message.
+       ;; https://git.savannah.gnu.org/cgit/emacs.git/commit/?id=977630b5285809a57e50ff5f38d9c34247b549a7
+       (unless buffer-undo-list
+         (push (point) buffer-undo-list))
+       (,(if (fboundp 'combine-change-calls)
+             'combine-change-calls
+           'combine-after-change-calls)
+        ,start-value
+        ,end-value
+        (jsonian--huge-edit-1 ,start-value ,end-value (lambda () ,@body))))))
+
+(defun jsonian--huge-edit-1 (start end body)
+  "Evaluate a function BODY with optimizations for huge edits.
+
+Create undo entries as if the contents from START to END are replaced at once.
+
+BODY must not modify buffer outside the region (START END), nor move any markers
+out of the region."
+  (let ((old-undo-list buffer-undo-list)
+        (undo-inhibit-record-point t)
+        deletion-undo-list)
+    ;; Clear the undo list.
+    (buffer-disable-undo)
+    (buffer-enable-undo)
+    (unwind-protect
+        (atomic-change-group
+          (delete-region start end)
+          ;; This contains restoreing the region and markers inside it.
+          (setq deletion-undo-list buffer-undo-list)
+          (primitive-undo (length deletion-undo-list) deletion-undo-list))
+      (setq buffer-undo-list old-undo-list))
+    (setq start (copy-marker start))
+    (setq end (copy-marker end))
+    (buffer-disable-undo)
+    (unwind-protect
+        (funcall body)
+      ;; Note that setting `buffer-undo-list' enables undo again.
+      (setq buffer-undo-list
+            (append (cons
+                     (cons (jsonian--free-marker start)
+                           (jsonian--free-marker end))
+                     deletion-undo-list)
+                    old-undo-list)))))
 
 
 ;; Manipulating and verifying JSON paths.
@@ -592,15 +661,17 @@ returned."
              (>= pos (point-min))
              (<= pos (point-max)))
     (save-excursion
-;; The behavior of `syntax-ppss' is worth considering.
-;; This is confusing behavior.  For example:
-;;   [ 1, 2, /* 42 */ 3 ]
-;;           ^
-;; is not in a comment, since it is part of the comment deliminator.
+      ;; The behavior of `syntax-ppss' is worth considering.
+      ;; This is confusing behavior.  For example:
+      ;;   [ 1, 2, /* 42 */ 3 ]
+      ;;           ^
+      ;; is not in a comment, since it is part of the comment deliminator.
       (let ((s (syntax-ppss pos)))
         (cond
          ;; We are in a comment body
          ((nth 4 s) (nth 8 s))
+         ;; We are in a string
+         ((nth 3 s) nil)
          ;; We are between the characters of a two character comment opener.
          ((and
            (eq (char-before pos) ?/)
@@ -608,33 +679,21 @@ returned."
             (eq (char-after pos) ?/)
             (eq (char-after pos) ?*))
            (< pos (point-max)))
-          ;; we still do the syntax check, because we might be in a string
-          (setq s (syntax-ppss (1+ pos)))
-          (when (nth 4 s)
-            (nth 8 s)))
-         ;; We are between the ending characters of a comment.
-         ((and
-           (eq (char-before pos) ?*)
-           (eq (char-after pos) ?/)
-           (> pos (point-min)))
-          ;; we still do the syntax check, because we might be in a string
-          (setq s (syntax-ppss (1- pos)))
-          (when (nth 4 s)
-            (nth 8 s))))))))
+          (1- pos)))))))
 
 (defun jsonian--forward-comment ()
   "Traverse forward out of a comment."
-  (while (or
-          (jsonian--enclosing-comment-p (point))
-          (jsonian--enclosing-comment-p (1+ (point))))
-    (goto-char (1+ (point)))))
+  (when (jsonian--backward-comment)
+    (forward-comment 1)
+    (point)))
 
 (defun jsonian--backward-comment ()
   "Traverse backward out of a comment."
   ;; In the body of a comment
-  (if-let (start (or (jsonian--enclosing-comment-p (point))
-                     (jsonian--enclosing-comment-p (1- (point)))))
-      (goto-char start)))
+  (when-let (start (or (jsonian--enclosing-comment-p (point))
+                       (jsonian--enclosing-comment-p (1- (point)))))
+    (goto-char start)
+    start))
 
 (defun jsonian--forward-to-significant-char ()
   "Traverse forward to the next significant character."
@@ -669,20 +728,32 @@ does not have face EXPECTED-FACE, the string is manually parsed."
       (jsonian--string-scan-back)
       (cons (point) match))))
 
-(defun jsonian--forward-string (&optional expected-face)
+(defun jsonian--forward-string ()
   "Move forward a string, starting at the beginning \".
-If the string is highlighted with the `face' EXPECTED-FACE, use
-the face to define the scope of the string.  Otherwise the string
-is manually parsed."
+
+Return region of the string if found.  Otherwise, return nil.
+
+This function doesn't assume the syntax table is configured."
   (unless (eq (char-after) ?\")
     (error "`jsonian--forward-string': Expected to start at \", instead found %s"
            (if (char-after) (char-to-string (char-after)) "EOF")))
-  (if-let (match (and expected-face (jsonian--get-font-lock-region nil nil 'face expected-face)))
-      (progn (goto-char (cdr match)) match)
-    (setq match (point))
-    (forward-char)
-    (when (jsonian--string-scan-forward t)
-      (cons match (point)))))
+  (forward-char)
+  (let ((start (point))
+        (done nil))
+    (while (not done)
+      (skip-chars-forward "^\"\\\\\n")
+      (cond
+       ((or (eobp) (eolp))
+        (setq done 'not-found))
+
+       ((eq (char-after) ?\\)
+        (forward-char 2))
+
+       ((eq (char-after) ?\")
+        (forward-char)
+        (setq done 'found))))
+    (when (eq done 'found)
+      (cons start (point)))))
 
 (defun jsonian--string-scan-back ()
   "Scan backwards from `point' looking for the beginning of a string.
@@ -1421,6 +1492,136 @@ string or a integer.  Point is a char location."
         elements))))
 
 
+;; Handling long single line JSON files
+
+(defun jsonian--pretty-print-long-line ()
+  "Format buffer containing long JSON lines.
+
+Lightweight version of `json-pretty-print-buffer'.
+
+This function is less accurate if the JSON lines is already formatted
+partially.
+
+This function does't assume the syntax table is configured."
+  (jsonian--huge-edit (point-min) (point-max)
+    (save-excursion
+      (goto-char (point-min))
+      (let ((inhibit-changing-match-data t)
+            (inhibit-modification-hooks t)
+            (level 0)
+            (offset (or jsonian-indentation
+                        jsonian-default-indentation))
+            (original-size (- (point-max) (point-min)))
+            (progress (make-progress-reporter "Formatting..."
+                                              (point-min)
+                                              (point-max)))
+            char
+            match-start
+            match-end
+            empty)
+        (while (not (eobp))
+          (skip-chars-forward "^][\"{}:,/")
+          (progress-reporter-update progress
+                                    (- original-size (- (point-max) (point))))
+          (setq char (char-after))
+          (cond
+           ((or (eq char ?\[)
+                (eq char ?{))
+            (forward-char)
+            (setq match-end (point))
+            (skip-chars-forward "\s\t\n")
+            (setq empty (or (eq (char-after) ?\])
+                            (eq (char-after) ?\})))
+            (unless empty
+              (setq level (1+ level)))
+            (delete-region match-end (point))
+            (insert ?\n)
+            (indent-to (* level offset))
+            (when empty
+              (forward-char)))
+
+           ((or (eq char ?\])
+                (eq char ?}))
+            (setq level (1- level))
+            (setq match-start (point))
+            (skip-chars-backward "\s\t\n")
+            (delete-region (point) match-start)
+            (insert ?\n)
+            (indent-to (* level offset))
+            (forward-char))
+
+           ((eq char ?,)
+            (forward-char)
+            (setq match-end (point))
+            (skip-chars-forward "\s\t\n")
+            (delete-region match-end (point))
+            (insert ?\n)
+            (indent-to (* level offset)))
+
+           ((eq char ?:)
+            (forward-char)
+            (unless (or (eq (char-after) ?\n)
+                        (eq (char-after) ?\s)
+                        (eq (char-after) ?\t))
+              (insert ?\s)))
+
+           ((eq char ?\")
+            (jsonian--forward-string))
+
+           ((and (eq char ?/)
+                 (eq (char-after (1+ (point))) ?/))
+            (end-of-line))
+
+           ((and (eq char ?/)
+                 (eq (char-after (1+ (point))) ?*))
+            (forward-char 2)
+            (jsonian--skip-multiline-comment))))
+        (progress-reporter-done progress)))))
+
+(defun jsonian--check-long-line ()
+  "If the first line of the buffer is long, pretty print it.
+
+The user is asked if they want to do so when the first line is longer than
+`jsonian-long-line-threshold'."
+  (save-excursion
+    (goto-char (point-min))
+    (when (and (> (buffer-size) jsonian-long-line-threshold)
+               (not (search-forward "\n"
+                                    (+ (point) jsonian-long-line-threshold)
+                                    t))
+               (y-or-n-p "The buffer seems long.  Pretty print it? "))
+      (jsonian--pretty-print-long-line))))
+
+(defun jsonian--skip-multiline-comment ()
+  "Move point after the multiline comment under the point.
+
+Point is assumed to be in a multiline comment, after the opening delimiter.
+
+Multiline comments can be nested.
+
+This function doesn't assume the syntax table is configured."
+  (let ((done nil))
+    (while (not done)
+      (skip-chars-forward "^/*")
+      (cond
+       ((eobp)
+        (setq done t))
+
+       ((eq (char-after) ?/)
+        (forward-char)
+        (when (eq (char-after) ?*)
+          (forward-char)
+          (jsonian--skip-multiline-comment)))
+
+       ((eq (char-after) ?*)
+        (forward-char)
+        (when (eq (char-after) ?/)
+          (forward-char)
+          (setq done t)))))))
+
+
+
+
 ;; The jsonian major mode and the basic functions that support it.
 ;; Most functions in this page hook into existing emacs functionality.
 
@@ -1466,7 +1667,8 @@ string or a integer.  Point is a char location."
          nil nil nil nil
          (font-lock-syntactic-face-function . jsonian--syntactic-face)))
   (cl-pushnew #'jsonian--handle-change before-change-functions)
-  (advice-add #'narrow-to-defun :before-until #'jsonian--correct-narrow-to-defun))
+  (advice-add #'narrow-to-defun :before-until #'jsonian--correct-narrow-to-defun)
+  (jsonian--check-long-line))
 
 (defun jsonian--syntactic-face (state)
   "The syntactic face function for the position represented by STATE.
@@ -1799,6 +2001,11 @@ DIRECTION indicates if parsing is forward (:forward) or backward (:backward)."
           (setq i (1+ i)
                 frame (backtrace-frame i)))))
     ret-val))
+
+(defun jsonian--free-marker (marker)
+  "Make MARKER pointing nowhere and return the old position."
+  (prog1 (marker-position marker)
+    (set-marker marker nil nil)))
 
 (provide 'jsonian)
 
