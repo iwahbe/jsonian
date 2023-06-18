@@ -1461,36 +1461,176 @@ string or a integer.  Point is a char location."
        #'jsonian-beginning-of-defun)
   (set (make-local-variable 'end-of-defun-function)
        #'jsonian-end-of-defun)
-  (set (make-local-variable 'font-lock-defaults)
-       '(jsonian--font-lock-keywords
-         nil nil nil nil
-         (font-lock-syntactic-face-function . jsonian--syntactic-face)))
+  (set (make-local-variable 'font-lock-defaults) '(() t))
+  (set (make-local-variable 'font-lock-fontify-region-function)
+       #'jsonian--fontify-region)
+  (set (make-local-variable 'font-lock-extra-managed-props)
+       '(fontified syntax-multiline))
   (cl-pushnew #'jsonian--handle-change before-change-functions)
   (advice-add #'narrow-to-defun :before-until #'jsonian--correct-narrow-to-defun))
-
-(defun jsonian--syntactic-face (state)
-  "The syntactic face function for the position represented by STATE.
-STATE is a `parse-partial-sexp' state, and the returned function is the
-JSON font lock syntactic face function."
-  (cond
-   ((nth 3 state)
-    ;; This might be a string or a name
-    (if (or (jsonian--after-key (nth 8 state))
-            (not (save-excursion
-                   (goto-char (nth 8 state))
-                   (jsonian--pos-in-keyp t))))
-        font-lock-string-face
-      font-lock-keyword-face))
-   ((nth 4 state) font-lock-comment-face)))
 
 (add-to-list 'hs-special-modes-alist '(jsonian-mode "{" "}" "/[*/]" nil))
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.json\\'" . jsonian-mode))
 
-(defvar jsonian--font-lock-keywords
-  (list (cons (regexp-opt '("true" "false" "null")) 'font-lock-constant-face))
-  "Keywords in JSON (true|false|null).")
+(defun jsonian--fontify-region (start end &optional _verbose)
+  "Fontify region from START to END."
+  (save-excursion
+    (goto-char start)
+    (setq start (line-beginning-position))
+    (goto-char end)
+    (setq end (line-end-position)))
+  (let ((extended-region (jsonian--syntax-propertize-extend-region start end)))
+    (when extended-region
+      (setq start (car extended-region))
+      (setq end (cdr extended-region)))
+    (jsonian--do-fontify-region start end)
+    `(jit-lock-bounds ,start . ,end)))
+
+(defun jsonian--do-fontify-region (start end)
+  "Fontify region from START to END.
+
+START and END must not in strings or comments."
+  (let* ((inhibit-point-motion-hooks t)
+         (comments-enabled (derived-mode-p 'jsonian-c-mode))
+         (chars (if comments-enabled
+                    "^\"/tfn"
+                  "^\"tfn")))
+    (with-silent-modifications
+      (save-match-data
+        (save-excursion
+          (font-lock-unfontify-region start end)
+          (goto-char start)
+          (skip-chars-forward chars end)
+          (while (< (point) end)
+            (cond
+             ((= (char-after) ?\")
+              (let ((string-start (point))
+                    string-end)
+                (forward-char)
+                (jsonian--fontify-string-content end)
+                (setq string-end (point))
+                (put-text-property string-start string-end 'fontified t)
+                (if comments-enabled
+                    (jsonian--skip-and-fontify-comments end)
+                  (skip-chars-forward "\s\t\n\r"))
+                (add-face-text-property
+                 string-start
+                 string-end
+                 (if (eq (char-after) ?:)
+                     font-lock-keyword-face
+                   font-lock-string-face)
+                 t)))
+             ((= (char-after) ?/)
+              (if (or (= (char-after (1+ (point))) ?/)
+                      (= (char-after (1+ (point))) ?*))
+                  (jsonian--skip-and-fontify-comments end)
+                (forward-char)))
+             ((looking-at "\\<\\(?:false\\|null\\|true\\)\\>")
+              (put-text-property (match-beginning 0)
+                                 (match-end 0)
+                                 'fontified
+                                 t)
+              (put-text-property (match-beginning 0)
+                                 (match-end 0)
+                                 'face
+                                 font-lock-constant-face)
+              (forward-char))
+             (t
+              (forward-char)))
+            (skip-chars-forward chars end)))))))
+
+(defun jsonian--fontify-string-content (end)
+  "Fontify contents of a string.
+
+Move point after the string.
+
+Point is assumed to be after open delimiter.
+
+Don't process beyond END."
+  (let ((chars "^\\\\\"\n")
+        (done nil)
+        start
+        face)
+    (skip-chars-forward chars end)
+    (while (and (not done) (< (point) end))
+      (cond
+       ((= (char-after) ?\\)
+        (setq start (point))
+        (forward-char)
+        (cond
+         ((= (char-after) ?u)
+          (re-search-forward (rx (seq "u" (** 0 4 (any "0-9A-Fa-f"))))
+                             end t)
+          (setq face font-lock-preprocessor-face))
+         ((memq (char-after) '(?\" ?\\ ?/ ?b ?f ?n ?r ?t))
+          (forward-char)
+          (setq face font-lock-preprocessor-face))
+         (t
+          (setq face 'error)))
+        (put-text-property start (point) 'fontified t)
+        (put-text-property start (point) 'face face)
+        (skip-chars-forward chars end))
+       ((or (= (char-after) ?\")
+            (= (char-after) ?\n))
+        (forward-char)
+        (setq done t))
+       (t
+        (skip-chars-forward chars end))))
+    (unless done
+      (goto-char end))))
+
+(defun jsonian--skip-and-fontify-comments (end)
+  "Fontify contents of a comment.
+
+Move point after the comment.
+
+Point is assumed to be after open delimiter.
+
+Don't process beyond END."
+  (skip-chars-forward "\s\r\n\t")
+  (let ((done nil) start)
+    (while (and (not done)
+                (< (point) end)
+                (= (char-after) ?/))
+      (setq start (point))
+      (cond
+       ((= (char-after (1+ (point))) ?/)
+        (end-of-line)
+        (put-text-property start (point) 'fontified t)
+        (put-text-property start (point) 'face font-lock-comment-face))
+       ((= (char-after (1+ (point))) ?*)
+        (forward-char)
+        (jsonian--skip-multiline-comment-content end)
+        (put-text-property start (point) 'fontified t)
+        (put-text-property start (point) 'syntax-multiline t)
+        (put-text-property start (point) 'face font-lock-comment-face))
+       (t
+        (setq done t)))
+      (skip-chars-forward "\s\r\n\t"))))
+
+(defun jsonian--skip-multiline-comment-content (end)
+  "Move point after the comment.
+
+Point is assumed to be after open delimiter.
+
+Don't move beyond END."
+  (let ((level 1))
+    (while (and (not (zerop level)) (< (point) end))
+      (if (re-search-forward (rx (or "/*" "*/")) end t)
+          (if (= (char-before) ?/)
+              (setq level (1- level))
+            (setq level (1+ level)))
+        (goto-char end)))))
+
+(defun jsonian--syntax-propertize-extend-region (start end)
+  "Return region to be propertized.
+
+The returned region contains the original region (START . END).
+If the region is not modified, return nil.
+Intended for `syntax-propertize-extend-region-functions'."
+  (syntax-propertize-multiline start end))
 
 (defun jsonian--infer-indentation ()
   "Infer the level of indentation at point."

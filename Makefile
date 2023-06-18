@@ -79,5 +79,8 @@ bench-javascript: bench-base
 bench-fundamental: bench-base
 	$(call bench,${LARGE_JSON_FILE},"(fundamental-mode)",)
 
+bench-fundamental-keyword-only: bench-base
+	$(call bench,${LARGE_JSON_FILE},"(progn (fundamental-mode) (setq-local font-lock-defaults '(() t)))",)
+
 bench-prog: bench-base
 	$(call bench,${LARGE_JSON_FILE},"(prog-mode)",)
