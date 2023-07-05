@@ -224,6 +224,241 @@ Otherwise it will parse back to the beginning of the file."
               ((bobp) (cl-return nil))
               (t  (jsonian--unexpected-char :backward "the end of a JSON value"))))))
 
+
+(defun jsonian--cursor-new (location)
+  "Create a new cursor based parser at LOCATION.
+
+Cursors always point to a valid token.  If no token is found, nil is returned."
+  (save-excursion
+    (goto-char location)
+    (when (jsonian--position-before-token)
+      `(point ,(point)))))
+
+(defun jsonian--down-node ()
+  "Move `point' into a container node.
+
+Given the example with point at $:
+
+ $\"foo\": {
+    \"bar\": 3
+  }
+
+`jsonian--down-node' will move point so `char-after' is at \"bar\":
+
+  \"foo\": {
+   $\"bar\": 3
+  }
+
+This function assumes we are at the start of a node."
+  (let ((start (point))
+        (ret (pcase (char-after)
+               ((or ?\[ ?\{) (jsonian--forward-token))
+               (?\" ;; We might be in a key, so lets check
+                (jsonian--forward-token)
+                (when (equal (char-after) ?:)
+                    (progn
+                      (jsonian--forward-token)
+                      (jsonian--down-node)))))))
+    (unless (eq ret t)
+      (goto-char start))
+    ret))
+
+(defun jsonian--up-node ()
+  "Move `point' to the enclosing node.
+
+Given the example with point at $:
+
+  {
+    \"a\": 1,
+   $\"b\": 2
+  }
+
+`jsonian--up-node' will move point so `char-after' is at the opening {:
+
+ ${
+    \"a\": 1,
+   \"b\": 2
+  }
+
+This function assumes we are at the start of a node."
+  (let* ((start (point))
+         ;; Move to the enclosing container
+         (ret (when-let ((enclosing (nth 1 (syntax-ppss))))
+                (goto-char enclosing)
+                (if (memq (char-after) '(?\{ ?\[))
+                    t
+                  (goto-char start)
+                  nil))))
+    ;; We have found an enclosing container and moved there. We now need only
+    ;; deal with an associated key.
+    (when ret
+      (setq start (point))
+      (unless (and (jsonian--backward-token)
+                   (eq (char-after) ?:)
+                   (jsonian--backward-token))
+        (goto-char start))
+      ret)))
+
+(defun jsonian--forward-node ()
+  "Move `point' forward a node.
+`jsonian--forward-node' will not move up or down within a tree.
+
+This function assumes we are at the start of a node."
+  (let ((start (point))
+        ;; We are starting at a valid node, which means one of:
+        ;; - A plain value
+        ;; - A key in an object
+        (ret (pcase (char-after)
+               ((or ?\[ ?\{) ; We are at the start of a list
+                (forward-list)
+                (if (jsonian--position-before-token)
+                    (jsonian--forward-token-comma)
+                  'eob))
+               (?\"
+                (jsonian--forward-token)
+                (if (equal (char-after) ?\:)  ; `equal' to obviate the `eobp' check
+                    ;; We are looking at a key, so traverse the key and the value.
+                    (and (jsonian--forward-token) ; traverse the :
+                         (jsonian--forward-node)) ; traverse the value node
+                  ;; We are just looking at a string
+                  (jsonian--forward-token-comma)))
+               ;; Just a normal scalar value
+               (_
+                (jsonian--forward-token)
+                (jsonian--forward-token-comma)))))
+    (unless (eq ret t)
+      (goto-char start))
+    ret))
+
+(defun jsonian--backward-node ()
+  "Move `point' backward over one node.
+`jsonian--backward-node' will not move up or down within a tree.
+
+This function assumes we are at the start of a node."
+  (let ((start (point))
+        (ret (if (not (jsonian--backward-token))
+                 'bob
+               (pcase (char-after)
+                 ;; This was a valid entry in a list or map, so keep going backwards
+                 (?,
+                  ;; Traverse back over the token
+                  (jsonian--backward-token)
+                  (when (if (memq (char-after) '(?\} ?\]))
+                            (progn
+                              (forward-char)
+                              (backward-list)
+                              t)
+                          t)
+                    (if (save-excursion (and (jsonian--backward-token)
+                                             (eq (char-after) ?:)))
+                        ;; We are at a key in an object, so traverse back the key as well.
+                        (and (jsonian--backward-token) (jsonian--backward-token))
+                      t)))
+                 ((or ?\[ ?\{) 'start)
+                 (_ (user-error "Unexpected character '%c', expected '[', '{' or ','" (char-after)))))))
+    (unless (eq ret t)
+      (goto-char start))
+    ret))
+
+(defun jsonian--forward-token-comma ()
+  "Move `point' over a separating ','.
+
+If the end of a container or the buffer is reached, then `eob'
+and `end' will be send respectively.
+
+If the JSON is invalid then a `user-error' will be signaled."
+  (pcase (char-after)
+    ((or ?\] ?\}) 'end)
+    (?, (jsonian--forward-token))
+    (_ (user-error "Unexpected character '%c', expected ']', '}' or ','" (char-after)))))
+
+(defun jsonian--backward-token ()
+  "Move `point' to the previous JSON token.
+
+`jsonian--backward-token' will skip over any whitespace it finds.
+
+It is assumed that `point' starts at a JSON token."
+  ;; TODO Handle comments
+  (skip-chars-backward "\s\n\t")
+  (cond
+   ;; No previous token, so do nothing
+   ((bobp) nil)
+   ;; Found a single char token, so move behind it
+   ((memq (char-before) '(?: ?, ?\[ ?\] ?\{ ?\}))
+    (backward-char)
+    t)
+   ;; Found a string, so traverse it
+   ((eq (char-before) ?\")
+    (jsonian--backward-string)
+    t)
+   ;; Otherwise we are looking at a non-string scalar token, so backtrack until we find a
+   ;; separator or whitespace.
+   (t (while (and (not (bobp))
+                  (not (memq (char-before) '(?: ?, ?\{ ?\} ?\[ ?\] ?\s ?\t ?\n))))
+        (backward-char))
+      t)))
+
+(defun jsonian--forward-token ()
+  "Move `point' to the next JSON token.
+
+`jsonian--forward-token' will skip over any whitespace it finds.
+
+It is assumed that `point' starts at a JSON token."
+  ;; TODO Handle comments
+  (cond
+   ;; We are at the end of the buffer, so we can't do anything
+   ((eobp) nil)
+   ;; Found a single char token, so move ahead of it
+   ((memq (char-after) '(?: ?, ?\[ ?\] ?\{ ?\}))
+    (forward-char))
+   ;; Found a string, so traverse it
+   ((eq (char-after) ?\")
+    (jsonian--forward-string))
+   ;; Otherwise we are looking at a non-string scalar token, so parse forward
+   ;; until we find a separator or whitespace (which implies that the token is
+   ;; over).
+   (t (while (and (not (eobp))
+                  (not (memq (char-after) '(?: ?, ?\{ ?\} ?\[ ?\] ?\s ?\t ?\n))))
+        (forward-char))))
+  (skip-chars-forward "\s\n\t")
+  (not (eobp)))
+
+(defun jsonian--position-before-token ()
+  "Position `point' before a node.
+This function moves forward through whitespace but backwards node contents.
+nil is returned if `jsonian--position-before-node' failed to position before
+a node.
+
+Consider the following example, with `point' starting at $:
+
+{ \"foo\":    \"fizz $buzz\" }
+
+`jsonian--position-before-node' will move the point so `char-after' is the ?\"
+that begins \"fizz buzz\".
+
+With the same example and different cursor position, we will see the same
+result:
+
+{ \"foo\": $   \"fizz buzz\" }
+
+The cursor will move so `char-after' will give the ?\" that begins
+\"fizz buzz\"."
+  ;; TODO Handle comments
+  (if-let (start (jsonian--pos-in-stringp))
+      (goto-char start)
+    ;; We are not in a string, so we are free to trust whitespace.
+    (if (> (skip-chars-forward "\s\n\t") 0)
+        ;; We have skipped over whitespace and we are not in a string.  Since whitespace
+        ;; is not valid inside JSON values, we are at the beginning of a value or at the
+        ;; end of the buffer.
+        (not (eobp))
+      (if (or (eobp) (memq (char-after) '(?: ?, ?\} ?\])))
+          (not (eobp))
+        ;; We are in the middle of a node, so backtrack until at the beginning
+        (while (not (or (bobp) (memq (char-before) '(?: ?, ?\s ?\t ?\n ?\{ ?\[))))
+          (backward-char))
+        (not (eobp))))))
+
 (defun jsonian--display-path (path &optional pretty)
   "Convert the reconstructed JSON path PATH to a string.
 If PRETTY is non-nil, format for human readable."
