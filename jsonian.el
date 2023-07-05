@@ -224,16 +224,6 @@ Otherwise it will parse back to the beginning of the file."
               ((bobp) (cl-return nil))
               (t  (jsonian--unexpected-char :backward "the end of a JSON value"))))))
 
-
-(defun jsonian--cursor-new (location)
-  "Create a new cursor based parser at LOCATION.
-
-Cursors always point to a valid token.  If no token is found, nil is returned."
-  (save-excursion
-    (goto-char location)
-    (when (jsonian--position-before-token)
-      `(point ,(point)))))
-
 (defun jsonian--down-node ()
   "Move `point' into a container node.
 
@@ -423,17 +413,45 @@ It is assumed that `point' starts at a JSON token."
   (skip-chars-forward "\s\n\t")
   (not (eobp)))
 
-(defun jsonian--position-before-token ()
+(defun jsonian--position-before-node ()
   "Position `point' before a node.
-This function moves forward through whitespace but backwards node contents.
-nil is returned if `jsonian--position-before-node' failed to position before
-a node.
+This function moves forward through whitespace but backwards through the node.
+nil is returned if `jsonian--position-before-node' failed to move `point' to
+before a node."
+  (when (jsonian--position-before-token)
+    (pcase (char-after)
+      ;; The token indicates that we are the second token within a "key: value"
+      ;; node.
+      (?: (jsonian--backward-token))
+      ;; We are at the end of a node, but its not clear how far from the
+      ;; front. Move back one token and try again.
+      (?,
+       (jsonian--backward-token)
+       (jsonian--position-before-node))
+      ;; We are at the end of a container, so move back inside the container and
+      ;; try again
+      ((or ?\] ?\})
+       (skip-chars-backward "\s\n\t}]") ; Skip out of enclosing nodes
+       (backward-char)                  ; Skip into the last node being enclosed
+       (jsonian--position-before-node)) ; Return that node
+      ;; We are either at the front of a node, or prefixed with a key
+      (_  (if (save-excursion (and (jsonian--backward-token) (eq (char-after) ?:)))
+          (progn
+            (jsonian--backward-token)  ;; Move behind the :
+            (jsonian--backward-token)) ;; Move behind the string
+        t)))))
+
+(defun jsonian--position-before-token ()
+  "Position `point' before a token.
+This function moves forward through whitespace but backwards through tokens.
+nil is returned if `jsonian--position-before-token' failed to move `point'
+before a token.
 
 Consider the following example, with `point' starting at $:
 
 { \"foo\":    \"fizz $buzz\" }
 
-`jsonian--position-before-node' will move the point so `char-after' is the ?\"
+`jsonian--position-before-token' will move the point so `char-after' is the ?\"
 that begins \"fizz buzz\".
 
 With the same example and different cursor position, we will see the same
@@ -447,7 +465,12 @@ The cursor will move so `char-after' will give the ?\" that begins
   (if-let (start (jsonian--pos-in-stringp))
       (goto-char start)
     ;; We are not in a string, so we are free to trust whitespace.
-    (if (> (skip-chars-forward "\s\n\t") 0)
+
+    (if (or
+         ;; Find the right-most token on this line by scanning forward
+         (and (> (skip-chars-forward "\s\t") 0) (not (eolp)))
+         ;; If we hit the end of the line, scan backward for the previous token
+         (and (eolp) (> (skip-chars-backward "\s\t\n") 0) (not (bolp)) (progn (backward-char) t)))
         ;; We have skipped over whitespace and we are not in a string.  Since whitespace
         ;; is not valid inside JSON values, we are at the beginning of a value or at the
         ;; end of the buffer.
