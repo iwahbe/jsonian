@@ -112,38 +112,37 @@ b. leveraging C code whenever possible."
       (when pos (goto-char pos))
       (jsonian--forward-to-significant-char)
       (jsonian--correct-starting-point)
-      (let ((result (jsonian--reconstruct-path (jsonian--path t nil))) display)
+      (let ((result (jsonian--reconstruct-path (jsonian--path t))) display)
         (when (called-interactively-p 'interactive)
           (setq display (jsonian--display-path result (not plain)))
           (message "Path: %s" display)
           (kill-new display))
         result))))
 
-(defun jsonian--cached-path (head allow-tags stop-at-valid)
+(defun jsonian--cached-path (head allow-tags)
   "Compute `jsonian-path' with assistance from `jsonian--cache'.
 HEAD is the current nearest known path segment at `point'.  See
-the docstring for `jsonian-path' for behavior of ALLOW-TAGS and
-STOP-AT-VALID."
+the docstring for `jsonian-path' for behavior of ALLOW-TAGS."
   (jsonian--ensure-cache)
-  (if (and (not allow-tags) (not stop-at-valid))
+  (if (not allow-tags)
       ;; We are in the tag state where we accept cached values
       (if-let* ((p (point))
                 (node (gethash p (jsonian--cache-locations jsonian--cache))))
           ;; We have retrieved a cached value, so return it
           (reverse (jsonian--cached-node-path node))
         ;; Else cache the value and return it
-        (let ((r (cons head (jsonian--path allow-tags stop-at-valid))))
+        (let ((r (cons head (jsonian--path allow-tags))))
           (jsonian--cache-node p (reverse r))
           r))
     ;; Otherwise performed the un-cached compute
-    (cons head (jsonian--path allow-tags stop-at-valid))))
+    (cons head (jsonian--path allow-tags))))
 
-(defun jsonian--path (allow-tags stop-at-valid)
+(defun jsonian--path (allow-tags)
   "Helper function for `jsonian-path'.
 Will pick up object level tags at the current level of if
-ALLOW-TAGS is non nil.  When STOP-AT-VALID is non-nil,
-`jsonian-path' will parse back to the enclosing object or array.
-Otherwise it will parse back to the beginning of the file."
+ALLOW-TAGS is non nil.  `jsonian--path' will parse back to the
+beginning of the file, assembling the path it traversed as it
+goes."
   ;; The number of previously encountered objects in this list (if we
   ;; are in a list).
   (let ((index 0))
@@ -155,18 +154,15 @@ Otherwise it will parse back to the beginning of the file."
               ;;
               ;; Enclosing object
               ((eq (char-before) ?\{)
-               (if stop-at-valid
-                   (cl-return nil)
-                 (backward-char)
-                 (setq index 0
-                       allow-tags t)))
+               (backward-char)
+               (setq index 0
+                     allow-tags t))
               ;; Enclosing array
               ((eq (char-before) ?\[)
                (cl-return
-                (if stop-at-valid
-                   (list index)
+                (progn
                   (backward-char)
-                  (jsonian--cached-path index t stop-at-valid))))
+                  (jsonian--cached-path index t))))
               ;;
               ;; Skipping over a complete node (either a array or a object)
               ((or
@@ -200,7 +196,7 @@ Otherwise it will parse back to the beginning of the file."
                  (when allow-tags
                    ;; To avoid blowing the recursion limit, we only collect tags
                    ;; (and recurse on them) when we need to.
-                   (cl-return (jsonian--cached-path tag-text nil stop-at-valid)))))
+                   (cl-return (jsonian--cached-path tag-text nil)))))
               ;;
               ;; Found a string value, ignore
               ((eq (char-before) ?\")
@@ -1351,7 +1347,7 @@ If PATH is supplied, navigate to it."
                 (completing-read "Select Element: " #'jsonian--find-completion nil t
                                  (save-excursion
                                    (jsonian--correct-starting-point)
-                                   (when-let* ((path (jsonian--reconstruct-path (jsonian--path t nil)))
+                                   (when-let* ((path (jsonian--reconstruct-path (jsonian--path t)))
                                                (display (jsonian--display-path path t)))
                                      display))))))
       ;; We know that the path is valid since we chose it from the list of valid paths presented
