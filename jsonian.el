@@ -112,113 +112,60 @@ b. leveraging C code whenever possible."
       (when pos (goto-char pos))
       (jsonian--forward-to-significant-char)
       (jsonian--correct-starting-point)
-      (let ((result (jsonian--reconstruct-path (jsonian--path t))) display)
+      (let ((result (jsonian--reconstruct-path (jsonian--path))) display)
         (when (called-interactively-p 'interactive)
           (setq display (jsonian--display-path result (not plain)))
           (message "Path: %s" display)
           (kill-new display))
         result))))
 
-(defun jsonian--cached-path (head allow-tags)
+(defun jsonian--cached-path (point head)
   "Compute `jsonian-path' with assistance from `jsonian--cache'.
-HEAD is the current nearest known path segment at `point'.  See
-the docstring for `jsonian-path' for behavior of ALLOW-TAGS."
+HEAD is the path segment for POINT."
   (jsonian--ensure-cache)
-  (if (not allow-tags)
-      ;; We are in the tag state where we accept cached values
-      (if-let* ((p (point))
-                (node (gethash p (jsonian--cache-locations jsonian--cache))))
-          ;; We have retrieved a cached value, so return it
-          (reverse (jsonian--cached-node-path node))
-        ;; Else cache the value and return it
-        (let ((r (cons head (jsonian--path allow-tags))))
-          (jsonian--cache-node p (reverse r))
-          r))
-    ;; Otherwise performed the un-cached compute
-    (cons head (jsonian--path allow-tags))))
+  (if-let* ((node (gethash point (jsonian--cache-locations jsonian--cache))))
+      ;; We have retrieved a cached value, so return it
+      (reverse (jsonian--cached-node-path node))
+    ;; Else cache the value and return it
+    (let ((r (cons head (jsonian--path))))
+      (jsonian--cache-node point (reverse r))
+      r)))
 
-(defun jsonian--path (allow-tags)
+(defun jsonian--path ()
   "Helper function for `jsonian-path'.
-Will pick up object level tags at the current level of if
-ALLOW-TAGS is non nil.  `jsonian--path' will parse back to the
-beginning of the file, assembling the path it traversed as it
-goes."
-  ;; The number of previously encountered objects in this list (if we
-  ;; are in a list).
-  (let ((index 0))
-    ;; We are not in the middle of a string, so we can now safely check for
-    ;; the string property without false positives.
-    (cl-loop 'while (not (bobp))
-             (jsonian--backward-to-significant-char)
-             (cond
-              ;;
-              ;; Enclosing object
-              ((eq (char-before) ?\{)
-               (backward-char)
-               (setq index 0
-                     allow-tags t))
-              ;; Enclosing array
-              ((eq (char-before) ?\[)
-               (cl-return
-                (progn
-                  (backward-char)
-                  (jsonian--cached-path index t))))
-              ;;
-              ;; Skipping over a complete node (either a array or a object)
-              ((or
-                (eq (char-before) ?\])
-                (eq (char-before) ?\}))
-               (backward-char)
-               (let ((close (1- (scan-lists (point) 1 1))))
-                 (when (< close (line-end-position))
-                   (goto-char (1+ close))
-                   (backward-list)))
-               (backward-char))
-              ;;
-              ;; In a list or object
-              ((eq (char-before) ?,)
-               (backward-char)
-               (setq index (1+ index)))
-              ;;
-              ;; Object tag
-              ((eq (char-before) ?:)
-               (backward-char)
-               (jsonian--backward-to-significant-char)
-               (unless (eq (char-before) ?\")
-                 (user-error "Before ':' expected '\"', found '%s'" (if (bobp) "BOB" (char-before))))
-               (let* ((tag-region (jsonian--backward-string 'font-lock-keyword-face))
-                      (tag-text (when tag-region
-                                  (buffer-substring-no-properties (1+ (car tag-region)) (1- (cdr tag-region))))))
-                 (unless tag-region
-                   (error "Could not find tag"))
-                 (when (= (car tag-region) (point-min))
-                   (user-error "Before tag '\"%s\"' expected something, found beginning of buffer" tag-text))
-                 (when allow-tags
-                   ;; To avoid blowing the recursion limit, we only collect tags
-                   ;; (and recurse on them) when we need to.
-                   (cl-return (jsonian--cached-path tag-text nil)))))
-              ;;
-              ;; Found a string value, ignore
-              ((eq (char-before) ?\")
-               (jsonian--backward-string 'font-lock-string-face))
-              ;; NOTE: I'm making a choice to parse non-string literals instead of ignoring
-              ;; other characters. This ensures the partial parse is strict.
-              ;;
-              ;; Found a number value, ignore
-              ((jsonian--backward-number))
-              ;;
-              ;; Boolean literal: true
-              ((and (eq (char-before) ?e)
-                    (eq (char-before (1- (point))) ?u))
-               (jsonian--backward-true))
-              ;;
-              ;; Boolean literal: false
-              ((eq (char-before) ?e) (jsonian--backward-false))
-              ;;
-              ;; null literal
-              ((eq (char-before) ?l) (jsonian--backward-null))
-              ((bobp) (cl-return nil))
-              (t  (jsonian--unexpected-char :backward "the end of a JSON value"))))))
+`jsonian--path' will parse back to the beginning of the file,
+assembling the path it traversed as it goes."
+  ;; TODO: Write tests to call `jsonian-path' at multiple points in the same array in the
+  ;; same test. This will check that their cache values are distinct.
+  (when (jsonian--position-before-node)
+    ;; The number of previously encountered objects in this list (if we
+    ;; are in a list).
+    (cond
+     ;; We are at a key
+     ((and (eq (char-after) ?\")
+           (save-excursion
+             (and
+              (jsonian--forward-token)
+              (eq (char-after) ?:))))
+      (when-let ((s (jsonian--string-at-pos (1+ (point)))))
+        ;; If `s' is nil, it means that the string was invalid
+        (jsonian--cached-path (prog1 (point)
+                                (jsonian--up-node))
+                              (buffer-substring-no-properties
+                               (1+ (car s)) (1- (cdr s))))))
+     ;; We are not at a key but we are not at the beginning, so we must be in an array
+     ((save-excursion (jsonian--backward-token))
+      (let ((index 0) done (p (point)))
+        (while (not done)
+          (when-let (back (jsonian--backward-node))
+            (if (eq back 'start)
+                (setq done t)
+              (cl-incf index))))
+        (jsonian--cached-path (prog1 p
+                                (jsonian--up-node))
+                              index)))
+     ;; We are not in a array or object, so we must be at the top level
+     (t nil))))
 
 (defun jsonian--down-node ()
   "Move `point' into a container node.
@@ -1015,7 +962,7 @@ returned."
 
 (defun jsonian--string-at-pos (&optional pos)
   "Return (start . end) for a string at POS if it exists.
-Otherwise nil is returned.  POS defaults to `ponit'."
+Otherwise nil is returned.  POS defaults to `point'."
   (save-excursion
     (when pos
       (goto-char pos))
@@ -1347,7 +1294,7 @@ If PATH is supplied, navigate to it."
                 (completing-read "Select Element: " #'jsonian--find-completion nil t
                                  (save-excursion
                                    (jsonian--correct-starting-point)
-                                   (when-let* ((path (jsonian--reconstruct-path (jsonian--path t)))
+                                   (when-let* ((path (jsonian--reconstruct-path (jsonian--path)))
                                                (display (jsonian--display-path path t)))
                                      display))))))
       ;; We know that the path is valid since we chose it from the list of valid paths presented
