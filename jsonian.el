@@ -110,8 +110,7 @@ b. leveraging C code whenever possible."
   (with-current-buffer (or buffer (current-buffer))
     (save-excursion
       (when pos (goto-char pos))
-      (jsonian--forward-to-significant-char)
-      (jsonian--correct-starting-point)
+      (jsonian--position-before-node)
       (let ((result (jsonian--reconstruct-path (jsonian--path))) display)
         (when (called-interactively-p 'interactive)
           (setq display (jsonian--display-path result (not plain)))
@@ -134,38 +133,40 @@ HEAD is the path segment for POINT."
 (defun jsonian--path ()
   "Helper function for `jsonian-path'.
 `jsonian--path' will parse back to the beginning of the file,
-assembling the path it traversed as it goes."
+assembling the path it traversed as it goes.
+
+The caller is responsible for ensuring that `point' begins on a valid node."
   ;; TODO: Write tests to call `jsonian-path' at multiple points in the same array in the
   ;; same test. This will check that their cache values are distinct.
-  (when (jsonian--position-before-node)
-    ;; The number of previously encountered objects in this list (if we
-    ;; are in a list).
-    (cond
-     ;; We are at a key
-     ((and (eq (char-after) ?\")
-           (save-excursion
-             (and
-              (jsonian--forward-token)
-              (eq (char-after) ?:))))
-      (when-let ((s (jsonian--string-at-pos (1+ (point)))))
-        ;; If `s' is nil, it means that the string was invalid
-        (jsonian--cached-path (prog1 (point)
-                                (jsonian--up-node))
-                              (buffer-substring-no-properties
-                               (1+ (car s)) (1- (cdr s))))))
-     ;; We are not at a key but we are not at the beginning, so we must be in an array
-     ((save-excursion (jsonian--backward-token))
-      (let ((index 0) done (p (point)))
-        (while (not done)
-          (when-let (back (jsonian--backward-node))
-            (if (eq back 'start)
-                (setq done t)
-              (cl-incf index))))
-        (jsonian--cached-path (prog1 p
-                                (jsonian--up-node))
-                              index)))
-     ;; We are not in a array or object, so we must be at the top level
-     (t nil))))
+
+  ;; The number of previously encountered objects in this list (if we
+  ;; are in a list).
+  (cond
+   ;; We are at a key
+   ((and (eq (char-after) ?\")
+         (save-excursion
+           (and
+            (jsonian--forward-token)
+            (eq (char-after) ?:))))
+    (when-let ((s (jsonian--string-at-pos (1+ (point)))))
+      ;; If `s' is nil, it means that the string was invalid
+      (jsonian--cached-path (prog1 (point)
+                              (jsonian--up-node))
+                            (buffer-substring-no-properties
+                             (1+ (car s)) (1- (cdr s))))))
+   ;; We are not at a key but we are not at the beginning, so we must be in an array
+   ((save-excursion (jsonian--backward-token))
+    (let ((index 0) done (p (point)))
+      (while (not done)
+        (when-let (back (jsonian--backward-node))
+          (if (eq back 'start)
+              (setq done t)
+            (cl-incf index))))
+      (jsonian--cached-path (prog1 p
+                              (jsonian--up-node))
+                            index)))
+   ;; We are not in a array or object, so we must be at the top level
+   (t nil)))
 
 (defun jsonian--down-node ()
   "Move `point' into a container node.
@@ -972,30 +973,6 @@ Otherwise nil is returned.  POS defaults to `point'."
       (when (and start end)
         (cons start (1+ end))))))
 
-(defun jsonian--correct-starting-point ()
-  "Move point to a valid place to start searching for a path.
-It is illegal to start searching for a path inside a string or a tag."
-  (let (match)
-    ;; Move before string values
-    (when (setq match (or
-                       (let ((s (jsonian--get-font-lock-region (point) nil 'face 'font-lock-string-face)))
-                         (and (car-safe s) s))
-                       (let ((s (jsonian--pos-in-valuep)))
-                         (when s (cons s nil)))))
-      (goto-char (car match)))
-    ;; Move after string tags
-    (when (setq match (or
-                       (jsonian--get-font-lock-region (point) nil 'face 'font-lock-keyword-face)
-                       (let ((e (jsonian--pos-in-keyp))) (when e (cons nil e)))))
-      (goto-char (cdr match))))
-  ;; Move before literals
-  (while (and (char-before) (>= (char-before) ?a) (<= (char-before) ?z))
-    (backward-char))
-  ;; Move after : to be sure we see it. Not doing this leads to confusing keys
-  ;; and string values when scanning backwards
-  (when (eq (char-after) ?:)
-    (forward-char)))
-
 (defun jsonian--get-string-region (type &optional pos buffer)
   "Find the bounds of the string at POS in BUFFER.
 Valid options for TYPE are `font-lock-string-face' and `font-lock-keyword-face'."
@@ -1293,7 +1270,7 @@ If PATH is supplied, navigate to it."
             (or path
                 (completing-read "Select Element: " #'jsonian--find-completion nil t
                                  (save-excursion
-                                   (jsonian--correct-starting-point)
+                                   (jsonian--position-before-node)
                                    (when-let* ((path (jsonian--reconstruct-path (jsonian--path)))
                                                (display (jsonian--display-path path t)))
                                      display))))))
