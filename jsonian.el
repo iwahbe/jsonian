@@ -2021,19 +2021,29 @@ containing array/object."
 (defun jsonian-beginning-of-defun (&optional arg)
   "Move to the beginning of the smallest object/array enclosing `POS'.
 ARG is currently ignored."
-  (setq arg (or arg 1)) ;; TODO use ARG correctly
-  (jsonian--correct-starting-point)
-  (jsonian--enclosing-object-or-array)
-  nil)
+  (ignore arg) ;; TODO use ARG correctly
+  (and
+   (jsonian--position-before-node)
+   (jsonian--up-node)))
 
 (defun jsonian-end-of-defun (&optional arg)
   "Move to the end of the smallest object/array enclosing `POS'.
 ARG is currently ignored."
-  (setq arg (or arg 1))
-  (jsonian--correct-starting-point)
-  (jsonian--enclosing-object-or-array)
-  (forward-list)
-  nil)
+  (ignore arg)
+  (when (and
+         (jsonian--position-before-node)
+         (jsonian--up-node))
+    (pcase (char-after)
+      ((or ?\[ ?\{)
+       (forward-list))
+      (?\"
+       (and
+        (jsonian--forward-token)
+        (eq (char-after) ?:)
+        (jsonian--forward-token)
+        (when (memq (char-after) '(?\[ ?\{))
+          (forward-list)))))
+    t))
 
 (defun jsonian-narrow-to-defun (&optional arg)
   "Narrows to region for `jsonian-mode'.  ARG is ignored."
@@ -2041,15 +2051,8 @@ ARG is currently ignored."
   ;; Its value is ignored.
   (ignore arg)
   (let (start end)
-    (save-excursion
-      (jsonian--correct-starting-point)
-      (setq end (point))
-      (when (jsonian--enclosing-item)
-        (setq start (point)))
-      (goto-char end)
-      (when (jsonian--enclosing-object-or-array)
-        (forward-list)
-        (setq end (point))))
+    (when (setq start (save-excursion (and (jsonian-beginning-of-defun) (point))))
+      (setq end (save-excursion (and (jsonian-end-of-defun) (point)))))
     (when (and start end)
       (narrow-to-region start end))))
 
