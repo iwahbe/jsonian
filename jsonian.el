@@ -411,25 +411,33 @@ result:
 The cursor will move so `char-after' will give the ?\" that begins
 \"fizz buzz\"."
   ;; TODO Handle comments
+  ;; TODO Add tests to ensure that adjusted position is stable:
+  ;;      (jsonian--position-before-token)
+  ;;      (let ((p (point)))
+  ;;        (jsonian--position-before-token)
+  ;;        (should (= (point) p)))
   (if-let (start (jsonian--pos-in-stringp))
       (goto-char start)
     ;; We are not in a string, so we are free to trust whitespace.
-
-    (if (or
-         ;; Find the right-most token on this line by scanning forward
-         (and (> (skip-chars-forward "\s\t") 0) (not (eolp)))
-         ;; If we hit the end of the line, scan backward for the previous token
-         (and (eolp) (> (skip-chars-backward "\s\t\n") 0) (not (bolp)) (progn (backward-char) t)))
-        ;; We have skipped over whitespace and we are not in a string.  Since whitespace
-        ;; is not valid inside JSON values, we are at the beginning of a value or at the
-        ;; end of the buffer.
-        (not (eobp))
-      (if (or (eobp) (memq (char-after) '(?: ?, ?\} ?\])))
-          (not (eobp))
-        ;; We are in the middle of a node, so backtrack until at the beginning
-        (while (not (or (bobp) (memq (char-before) '(?: ?, ?\s ?\t ?\n ?\{ ?\[))))
+    (let ((skipped (skip-chars-forward "\s\t")))
+      (if (and (> skipped 0) (not (eolp)))
+          ;; We have skipped over whitespace to significant char and we are not in a string.
+          ;; Since whitespace is not valid inside JSON values, we are at the beginning of a
+          ;; value or at the end of the buffer.
+          t
+        ;; If we skipped forward and there are no longer tokens on that line, we skip
+        ;; backward until we find something significant.
+        (when (and (= skipped 0) (or (memq (char-after) '(?\s ?\t ?\n)) (eobp)))
+          (skip-chars-backward "\s\t\n")
           (backward-char))
-        (not (eobp))))))
+        (when (bobp)
+          (skip-chars-forward "\s\t\n"))
+        (if (memq (char-after) '(?: ?, ?\} ?\]))
+            (not (eobp))
+          ;; We are in the middle of a node, so backtrack until at the beginning
+          (while (not (or (bobp) (memq (char-before) '(?: ?, ?\s ?\t ?\n ?\{ ?\[))))
+            (backward-char))
+          (not (eobp)))))))
 
 (defun jsonian--display-path (path &optional pretty)
   "Convert the reconstructed JSON path PATH to a string.
