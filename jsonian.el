@@ -1650,32 +1650,25 @@ is returned."
   "Return a list of elements in the collection at point.
 nil is returned if the object at point is not a collection."
   (save-excursion
-    (when (jsonian--enter-collection)
-      (jsonian--find-siblings))))
-
-(defun jsonian--find-siblings ()
-  "Return a list of the elements in the enclosing scope.
-Elements are of the form ( key . point ) where key is either a
-string or a integer.  Point is a char location."
-  (when (and
-         (jsonian--position-before-node) ;; TODO: Remove when all calls are from valid nodes
-         (jsonian--up-node) (jsonian--down-node))
-    (let (elements done
-                   (obj-p (save-excursion (and (jsonian--forward-token)
-                                               (eq (char-after) ?:))))
-                   (count 0))
-      (while (not done)
-        (setq elements
-              (cons
-               (cons
-                (if obj-p
-                    (let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp t))))
-                      (buffer-substring-no-properties (1+ (point)) (1- end)))
-                  (prog1 count (cl-incf count)))
-                (point))
-               elements))
-        (setq done (eq (jsonian--forward-node) 'end)))
-      elements)))
+    (when (and
+           (jsonian--position-before-node) ;; TODO: Remove when all calls are from valid nodes
+           (jsonian--down-node))
+      (let (elements done
+                     (obj-p (save-excursion (and (jsonian--forward-token)
+                                                 (eq (char-after) ?:))))
+                     (count 0))
+        (while (not done)
+          (setq elements
+                (cons
+                 (cons
+                  (if obj-p
+                      (let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp t))))
+                        (buffer-substring-no-properties (1+ (point)) (1- end)))
+                    (prog1 count (cl-incf count)))
+                  (point))
+                 elements))
+          (setq done (eq (jsonian--forward-node) 'end)))
+        elements))))
 
 
 ;; The jsonian major mode and the basic functions that support it.
