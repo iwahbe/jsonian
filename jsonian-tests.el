@@ -158,20 +158,6 @@ setup for strictly JSON files.")
     (goto-char 2)
     (should (jsonian--pos-in-keyp))))
 
-(ert-deftest jsonian--correct-starting-point ()
-  (with-temp-buffer
-    (insert "\"foo\":\"bar\"") (goto-char 2)
-    ;; We start in the middle of a tag
-    (jsonian--correct-starting-point)
-    (should-point 7))
-  (with-temp-buffer
-    (insert "[true, false]") (goto-char 4)
-    (jsonian--correct-starting-point)
-    (should-point 2)
-    (goto-char 10)
-    (jsonian--correct-starting-point)
-    (should-point 8)))
-
 (ert-deftest jsonian-indent-specified ()
   "Load `indent1' and indent each line.
 We test that all lines are unchanged"
