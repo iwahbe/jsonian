@@ -587,7 +587,7 @@ need to be a leaf path."
                    (when (equal (car x) (car path))
                      (cl-assert (car x) t "Found nil car")
                      (goto-char (cdr x))
-                     (save-excursion (setq leaf (not (jsonian--enter-collection))))
+                     (setq leaf (not (jsonian--at-collection (point))))
                      t))
                  (jsonian--cached-find-children traversed :segment current-segment))
           (setq failed t))
@@ -618,30 +618,6 @@ If ARG is not nil, move to the ARGth enclosing item."
   (while (and (> arg 0) (jsonian--up-node))
     (cl-decf arg 1))
   (= arg 0))
-
-(defun jsonian--enclosing-item ()
-  "Move point to the the enclosing item start."
-  (when (jsonian--enclosing-object-or-array)
-    (let ((opening (point)))
-      (when (not (bobp))
-        (backward-char)
-        (jsonian--backward-to-significant-char)
-        (if (not (= (char-after) ?:))
-            (goto-char opening)
-          (when (not (bobp))
-            (backward-char)
-            (jsonian--backward-string)
-            (forward-char)))))
-    t))
-
-(defun jsonian--enclosing-object-or-array ()
-  "Go to the enclosing object/array of `point'."
-  ;; This is just `jsonian--up-node' except it doesn't key correct
-  (jsonian--correct-starting-point)
-  (jsonian--path nil t)
-  (when (member (char-before) '(?\[ ?\{))
-    (unless (bobp) (backward-char))
-    t))
 
 (defmacro jsonian--defun-predicate-traversal (name arg-list predicate)
   "Define `jsonian--forward-NAME' and `jsonian--backward-NAME'.
@@ -1118,60 +1094,12 @@ PROPERTY defaults to `face'."
            (previous-single-property-change (1+ pos) property)
            (next-single-property-change pos property)))))))
 
-(defun jsonian--traverse-forward (&optional n)
-  "Go forward N elements in an object or array."
-  (let ((n (or n 1)) done)
-    (when (<= n 0) (error "N must be positive"))
-    (jsonian--correct-starting-point)
-    (when (eq (char-after) ?,) (setq n (1+ n)))
-    (while (and (> n 0) (not done))
-      (jsonian--forward-to-significant-char)
-      (cond
-       ((eq (char-after) ?\") (jsonian--forward-string))
-       ((eq (char-after) ?:) (forward-char))
-       ((eq (char-after) ?t) (jsonian--forward-true))
-       ((eq (char-after) ?f) (jsonian--forward-false))
-       ((eq (char-after) ?n) (jsonian--forward-null))
-       ((eq (char-after) ?\{) (forward-list))
-       ((eq (char-after) ?\[) (forward-list))
-       ((jsonian--forward-number))
-       ((eq (char-after) ?,) (setq n (1- n)) (forward-char) (jsonian--forward-to-significant-char))
-       ((or (eq (char-after) ?\]) (eq (char-after) ?\})) (setq done t))
-       (t (jsonian--unexpected-char :forward "the beginning of a JSON value"))))
-    (jsonian--forward-to-significant-char)
-    (not done)))
-
 (defun jsonian--at-collection (pos)
   "Check if POS is before a collection."
   (save-excursion
     (goto-char pos)
-    (jsonian--enter-collection)))
-
-(defun jsonian--enter-collection ()
-  "Move point into the collection after point and return t.
-If there is no collection after point, return nil."
-  (cond
-   ;; Progress into the key
-   ((eq (char-after) ?\")
-    (if-let (end (jsonian--pos-in-keyp t))
-        (progn (goto-char end)
-               (jsonian--forward-to-significant-char)
-               (forward-char) ;; go past the `:'
-               (jsonian--forward-to-significant-char)
-               ;; and then the underlying value
-               (when (or (eq (char-after) ?\[)
-                         (eq (char-after) ?\{))
-                 (forward-char)
-                 t))
-      ;; We have found a string that is not a key, so it must
-      ;; be a value. That means we have hit a leaf.
-      ))
-   ;; Progress into the object
-   ((eq (char-after) ?\[) (forward-char) t)
-   ;; Progress into the array
-   ((eq (char-after) ?\{) (forward-char) t)
-   ;; Anything else must be a leaf
-   ))
+    (jsonian--position-before-node)
+    (jsonian--down-node)))
 
 
 ;; Supporting commands for `jsonian-edit-string'.

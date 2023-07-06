@@ -132,11 +132,11 @@ setup for strictly JSON files.")
 
 (ert-deftest jsonian--enclosing-item ()
   (with-file-and-point "path1.json" 75
-    (jsonian--enclosing-item)
+    (jsonian-enclosing-item)
     (should (= (point) 64))
-    (jsonian--enclosing-item)
-    (should (= (point) 42))
-    (jsonian--enclosing-item)
+    (jsonian-enclosing-item)
+    (should (= (point) 34))
+    (jsonian-enclosing-item)
     (should (= (point) (point-min)))))
 
 (ert-deftest jsonian--string-scan-back ()
@@ -171,14 +171,6 @@ setup for strictly JSON files.")
     (goto-char 10)
     (jsonian--correct-starting-point)
     (should-point 8)))
-
-(ert-deftest jsonian--traverse-forward ()
-  (with-file-and-point "path1.json" 44
-    (jsonian--traverse-forward)
-    (should-point 49)
-    (jsonian--traverse-forward 3)
-    (should-point 64)
-    (should-not (jsonian--traverse-forward))))
 
 (ert-deftest jsonian-indent-specified ()
   "Load `indent1' and indent each line.
