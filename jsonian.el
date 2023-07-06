@@ -242,13 +242,18 @@ Given the example with point at $:
 This function assumes we are at the start of a node."
   (let ((start (point))
         (ret (pcase (char-after)
-               ((or ?\[ ?\{) (jsonian--forward-token))
+               ((or ?\[ ?\{)
+                (and
+                 (jsonian--forward-token)
+                 ;; Prevent going into containers with no elements
+                 ;; TODO: Add test for this
+                 (not (memq (char-after) '(?\] ?\})))))
                (?\" ;; We might be in a key, so lets check
                 (jsonian--forward-token)
                 (when (equal (char-after) ?:)
-                    (progn
-                      (jsonian--forward-token)
-                      (jsonian--down-node)))))))
+                  (progn
+                    (jsonian--forward-token)
+                    (jsonian--down-node)))))))
     (unless (eq ret t)
       (goto-char start))
     ret))
@@ -436,10 +441,10 @@ before a node."
        (jsonian--position-before-node)) ; Return that node
       ;; We are either at the front of a node, or prefixed with a key
       (_  (if (save-excursion (and (jsonian--backward-token) (eq (char-after) ?:)))
-          (progn
-            (jsonian--backward-token)  ;; Move behind the :
-            (jsonian--backward-token)) ;; Move behind the string
-        t)))))
+              (progn
+                (jsonian--backward-token)  ;; Move behind the :
+                (jsonian--backward-token)) ;; Move behind the string
+            t)))))
 
 (defun jsonian--position-before-token ()
   "Position `point' before a token.
@@ -608,13 +613,10 @@ If ARG is not nil, move to the ARGth enclosing item."
   (if arg
       (cl-assert (wholenump arg) t "Invalid input to `jsonian-enclosing-item'.")
     (setq arg 1))
-  (while (and (> arg 0) (jsonian--enclosing-item))
+  (unless (jsonian--position-before-node)
+    (user-error "Failed to find a JSON node at point"))
+  (while (and (> arg 0) (jsonian--up-node))
     (cl-decf arg 1))
-  (when (and (= arg 0) (jsonian--after-key (point)))
-    (jsonian--backward-to-significant-char)
-    (backward-char)
-    (jsonian--backward-to-significant-char)
-    (jsonian--backward-string))
   (= arg 0))
 
 (defun jsonian--enclosing-item ()
@@ -634,6 +636,7 @@ If ARG is not nil, move to the ARGth enclosing item."
 
 (defun jsonian--enclosing-object-or-array ()
   "Go to the enclosing object/array of `point'."
+  ;; This is just `jsonian--up-node' except it doesn't key correct
   (jsonian--correct-starting-point)
   (jsonian--path nil t)
   (when (member (char-before) '(?\[ ?\{))
@@ -1654,29 +1657,25 @@ nil is returned if the object at point is not a collection."
   "Return a list of the elements in the enclosing scope.
 Elements are of the form ( key . point ) where key is either a
 string or a integer.  Point is a char location."
-  ;; Go to the beginning of the enclosing item, if we are at the end of the
-  ;; buffer, there is nothing there, so stop.
-  (when (and (jsonian--enclosing-item) (not (eobp)))
-    (forward-char) ;; Go the the beginning of the first element in the enclosing object
-    (jsonian--forward-to-significant-char)
-    ;; If we are at the end of the object, stop
-    (unless (or (eq (char-after) ?\})
-                (eq (char-after) ?\]))
-      (let ((elements
-             (list (cons
-                    (if-let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp t))))
-                        (buffer-substring-no-properties (1+ (point)) (1- end))
-                      0)
-                    (point)))))
-        (while (jsonian--traverse-forward)
-          (setq elements
-                (cons
-                 (cons (if-let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp))))
-                           (buffer-substring-no-properties (1+ (point)) (1- end))
-                         (length elements))
-                       (point))
-                 elements)))
-        elements))))
+  (when (and
+         (jsonian--position-before-node) ;; TODO: Remove when all calls are from valid nodes
+         (jsonian--up-node) (jsonian--down-node))
+    (let (elements done
+                   (obj-p (save-excursion (and (jsonian--forward-token)
+                                               (eq (char-after) ?:))))
+                   (count 0))
+      (while (not done)
+        (setq elements
+              (cons
+               (cons
+                (if obj-p
+                    (let ((end (save-excursion (forward-char) (jsonian--pos-in-keyp t))))
+                      (buffer-substring-no-properties (1+ (point)) (1- end)))
+                  (prog1 count (cl-incf count)))
+                (point))
+               elements))
+        (setq done (eq (jsonian--forward-node) 'end)))
+      elements)))
 
 
 ;; The jsonian major mode and the basic functions that support it.
