@@ -337,12 +337,34 @@ It is assumed that `point' starts at a JSON token."
         (backward-char))
       t)))
 
+(defvar-local jsonian--last-token-end nil
+  "The end of the last token that `jsonian--forward-token' parsed.
+
+For example, given the following string with point at the
+?| (`char-after' will be refer to ?,):
+
+  1.2|,   3.4
+
+`jsonian--forward-token' will move point to ?|:
+
+   1.2,   |3.4
+
+It will set the value of `jsonian--last-token-end' to
+
+   1.2,|  3.4
+
+If `jsonian--forward-token' returned nil, the value of
+`jsonian--last-token-end' is undefined.")
+
 (defun jsonian--forward-token ()
   "Move `point' to the next JSON token.
 
 `jsonian--forward-token' will skip over any whitespace it finds.
 
-It is assumed that `point' starts at a JSON token."
+It is assumed that `point' starts at a JSON token.
+
+t is returned if `jsonian--forward-token' successfully traversed
+a token, otherwise nil is returned."
   ;; TODO Handle comments
   (cond
    ;; We are at the end of the buffer, so we can't do anything
@@ -359,6 +381,7 @@ It is assumed that `point' starts at a JSON token."
    (t (while (and (not (eobp))
                   (not (memq (char-after) '(?: ?, ?\{ ?\} ?\[ ?\] ?\s ?\t ?\n))))
         (forward-char))))
+  (setq jsonian--last-token-end (point))
   (skip-chars-forward "\s\n\t")
   (not (eobp)))
 
@@ -1449,58 +1472,44 @@ Here STR represents the completing string and SUFFIX the string after point."
   "Find the type of the node at POS.
 POS must be at the beginning of a node.  If no type is found, nil
 is returned."
-  (cond
-   ;; At either a key or a string
-   ((eq (char-after pos) ?\")
-    (save-excursion
-      (goto-char pos)
-      (if-let (end (jsonian--pos-in-keyp t))
-          (progn (goto-char end)
-                          (jsonian--forward-to-significant-char)
-                          (forward-char)
-                          (jsonian--forward-to-significant-char)
-                          (jsonian--node-type (point)))
-        "string")))
-   ((or (eq (char-after pos) ?t)
-        (eq (char-after pos) ?f))
-    "boolean")
-   ((eq (char-after pos) ?n) "null")
-   ((eq (char-after pos) ?\[) "array")
-   ((eq (char-after pos) ?\{) "object")
-   ((and (<= (char-after pos) ?9)
-         (>= (char-after pos) ?0))
-    "number")))
+  (save-excursion
+    (goto-char pos)
+    ;; Skip past a key if present
+    (when (eq (char-after) ?\")
+      (unless (and (jsonian--forward-token)
+                   (eq (char-after) ?:)
+                   (jsonian--forward-token))
+        (goto-char pos)))
+    (pcase (char-after)
+      (?\" "string")
+      ((or ?t ?f) "boolean")
+      (?n "null")
+      (?\[ "array")
+      (?\{ "object")
+      ((pred (lambda (n)
+               (and (<= n ?9)
+                    (>= n ?0))))
+       "number"))))
 
 (defun jsonian--node-preview (pos)
-  "Provide a preview of the value of the node at POS."
-  (cond
-   ((eq (char-after pos) ?\")
-    ;; TODO: bound size of string
-    (save-excursion
-      (goto-char pos)
-      (if-let (end (jsonian--pos-in-keyp t))
-          (progn (goto-char end)
-                 (jsonian--forward-to-significant-char)
-                 (forward-char)
-                 (jsonian--forward-to-significant-char)
-                 (jsonian--node-preview (point)))
-        (jsonian--forward-string)
-        (buffer-substring pos (point)))))
-   ((or (eq (char-after pos) ?t)  ; literal: true
-        (eq (char-after pos) ?n)) ; literal: null
-    (buffer-substring pos (+ pos 4)))
-   ((eq (char-after pos) ?f)      ; literal: false
-    (buffer-substring pos (+ pos 5)))
-   ((and (<= (char-after pos) ?9) ; number
-         (>= (char-after pos) ?0))
-    (buffer-substring pos (save-excursion
-                            (goto-char pos)
-                            (jsonian--forward-number)
-                            (point))))
-   ((eq (char-after pos) ?\[)
-    (propertize "[ array ]" 'face 'font-lock-type-face))
-   ((eq (char-after pos) ?\{)
-    (propertize "{ object }" 'face 'font-lock-type-face))))
+  "Provide a preview of the value of the node at POS.
+
+POS must be a valid node."
+  ;; TODO This functionality is not under test. Add tests.
+  (save-excursion
+    (goto-char pos)
+    ;; Skip past a key if present
+    (when (eq (char-after) ?\")
+      (if (and (jsonian--forward-token) (eq (char-after) ?:))
+          (jsonian--forward-token)
+        (goto-char pos)))
+    (pcase (char-after)
+      ;; We preview arrays and objects specially, since they are often arbitrarily large.
+      (?\[ (propertize "[ array ]" 'face 'font-lock-type-face))
+      (?\{ (propertize "{ object }" 'face 'font-lock-type-face))
+      (_ (buffer-substring (point) (and
+                                    (jsonian--forward-token)
+                                    jsonian--last-token-end))))))
 
 (defun jsonian--find-children ()
   "Return a list of elements in the collection at point.
