@@ -53,9 +53,9 @@
   :link `(url-link :tag "GitHub" "https://github.com/iwahbe/jsonian"))
 
 (defcustom jsonian-ignore-font-lock (>= emacs-major-version 29)
-  "Prevent `font-lock' based optimizations.
-Don't use `font-lock-string-face' and `font-lock-keyword-face' to
-determine string and key values respectively."
+  "This variable doesn't do anything anymore.
+
+It will be removed in a future version of jsonian."
   :type 'boolean
   :group 'jsonian)
 
@@ -439,6 +439,9 @@ The cursor will move so `char-after' will give the ?\" that begins
   ;;      (let ((p (point)))
   ;;        (jsonian--position-before-token)
   ;;        (should (= (point) p)))
+  ;;
+  ;; TODO Add tests to ensure that `jsonian--position-before-token' will find a token
+  ;; given the buffer "|\n{"
   (if-let (start (jsonian--pos-in-stringp))
       (goto-char start)
     ;; We are not in a string, so we are free to trust whitespace.
@@ -554,7 +557,7 @@ it traverses existing structures in the buffer JSON.  It does not
 need to be a leaf path."
   (save-excursion
     (goto-char (point-min))
-    (jsonian--forward-to-significant-char)
+    (jsonian--position-before-token)
     (let (failed leaf current-segment traversed)
       (while (and path (not failed) (not leaf))
         (unless (seq-some
@@ -834,13 +837,6 @@ returned."
           (when (nth 4 s)
             (nth 8 s))))))))
 
-(defun jsonian--forward-comment ()
-  "Traverse forward out of a comment."
-  (while (or
-          (jsonian--enclosing-comment-p (point))
-          (jsonian--enclosing-comment-p (1+ (point))))
-    (goto-char (1+ (point)))))
-
 (defun jsonian--backward-comment ()
   "Traverse backward out of a comment."
   ;; In the body of a comment
@@ -848,53 +844,24 @@ returned."
                      (jsonian--enclosing-comment-p (1- (point)))))
       (goto-char start)))
 
-(defun jsonian--forward-to-significant-char ()
-  "Traverse forward to the next significant character."
-  (let (prev)
-    (while (not (eq prev (point)))
-      (setq prev (point))
-      (jsonian--forward-whitespace)
-      (jsonian--forward-comment))))
-
-(defun jsonian--backward-to-significant-char ()
-  "Traverse backward to the previous significant character."
-  (let (prev)
-    (while (not (eq prev (point)))
-      (setq prev (point))
-      (jsonian--backward-whitespace)
-      (jsonian--backward-comment))))
-
-(defun jsonian--backward-string (&optional expected-face)
-  "Move back a string, starting at the ending \".
-If the string is highlighted with the `face' EXPECTED-FACE, then
-use the face to define the scope of the region.  If the string
-does not have face EXPECTED-FACE, the string is manually parsed."
+(defun jsonian--backward-string ()
+  "Move back a string, starting at the ending \"."
   (unless (eq (char-before) ?\")
     (error "`jsonian--backward-string': Expected to start at \""))
-  (let ((match (and expected-face (jsonian--get-font-lock-region nil nil 'face expected-face))))
-    (if match
-        ;; The region is highlighted, so just jump to the beginning of that.
-        (progn (goto-char (1- (car match))) match)
-      ;; The region is not highlighted
-      (setq match (point))
-      (backward-char)
-      (jsonian--string-scan-back)
-      (cons (point) match))))
+  (let ((end (point)))
+    (backward-char) ; Skip over the previous "
+    (jsonian--string-scan-back)
+    (cons (point) end)))
 
-(defun jsonian--forward-string (&optional expected-face)
-  "Move forward a string, starting at the beginning \".
-If the string is highlighted with the `face' EXPECTED-FACE, use
-the face to define the scope of the string.  Otherwise the string
-is manually parsed."
+(defun jsonian--forward-string ()
+  "Move forward a string, starting at the beginning \"."
   (unless (eq (char-after) ?\")
     (error "`jsonian--forward-string': Expected to start at \", instead found %s"
            (if (char-after) (char-to-string (char-after)) "EOF")))
-  (if-let (match (and expected-face (jsonian--get-font-lock-region nil nil 'face expected-face)))
-      (progn (goto-char (cdr match)) match)
-    (setq match (point))
+  (let ((start (point)))
     (forward-char)
     (when (jsonian--string-scan-forward t)
-      (cons match (point)))))
+      (cons start (point)))))
 
 (defun jsonian--string-scan-back ()
   "Scan backwards from `point' looking for the beginning of a string.
@@ -965,11 +932,8 @@ the beginning of a string."
   (save-excursion
     (when (jsonian--string-scan-forward at-beginning)
       (let ((end (point)))
-        (while (or (= (char-after) ?\ )
-                   (= (char-after) ?\t)
-                   (= (char-after) ?\n)
-                   (= (char-after) ?\r))
-          (forward-char))
+        ;; TODO: The `skip-chars-forward' functionality is never tested.
+        (skip-chars-forward "\s\t\n\r")
         (and (= (char-after) ?:) end)))))
 
 (defun jsonian--after-key (pos)
@@ -1004,46 +968,18 @@ Otherwise nil is returned.  POS defaults to `point'."
       (when (and start end)
         (cons start (1+ end))))))
 
-(defun jsonian--get-string-region (type &optional pos buffer)
+(defun jsonian--get-string-region (type &optional pos)
   "Find the bounds of the string at POS in BUFFER.
 Valid options for TYPE are `font-lock-string-face' and `font-lock-keyword-face'."
-  (or (jsonian--get-font-lock-region pos buffer 'face type)
-      (save-excursion
-        (when buffer
-          (set-buffer buffer))
-        (when pos
-          (goto-char pos))
-        (cond
-         ((eq type 'font-lock-string-face)
-          (and (jsonian--pos-in-valuep) (jsonian--string-at-pos)))
-         ((eq type 'font-lock-keyword-face)
-          (and (jsonian--pos-in-keyp) (jsonian--string-at-pos)))
-         (t (error "'%s' is not a valid type" type))))))
-
-(defun jsonian--get-font-lock-region (&optional pos buffer property property-value)
-  "Find the bounds of the font-locked region surrounding POS in BUFFER.
-If PROPERTY-VALUE is set, the returned region has that value.  POS
-defaults to `point'.  BUFFER defaults to `current-buffer'.
-PROPERTY defaults to `face'."
-  (when (not jsonian-ignore-font-lock)
-    (let ((pos (or pos (point)))
-          (property (or property 'face))
-          found)
-      (with-current-buffer (or buffer (current-buffer))
-        (setq found (get-text-property pos property))
-        (when (and
-               found
-               (if property-value (equal property-value found) t)
-               ;; We do this check so other font effects like todo highlighting
-               ;; in strings don't break get string. It is a heuristic check, so
-               ;; may be wrong if we find the string/key `"foo\"BAR"'. and BAR
-               ;; is highlighted in another face.
-               (eq (char-before (next-single-property-change pos property)) ?\"))
-          (cons
-           ;; Previous starts looking behind the ", but so we need to include
-           ;; the " in the search. We thus start 1 ahead.
-           (previous-single-property-change (1+ pos) property)
-           (next-single-property-change pos property)))))))
+  (save-excursion
+    (when pos
+      (goto-char pos))
+    (cond
+     ((eq type 'font-lock-string-face)
+      (and (jsonian--pos-in-valuep) (jsonian--string-at-pos)))
+     ((eq type 'font-lock-keyword-face)
+      (and (jsonian--pos-in-keyp) (jsonian--string-at-pos)))
+     (t (error "'%s' is not a valid type" type)))))
 
 (defun jsonian--at-collection (pos)
   "Check if POS is before a collection."
