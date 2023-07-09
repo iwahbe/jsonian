@@ -597,23 +597,6 @@ If ARG is not nil, move to the ARGth enclosing item."
     (cl-decf arg 1))
   (= arg 0))
 
-(defmacro jsonian--defun-predicate-traversal (name arg-list predicate)
-  "Define `jsonian--forward-NAME' and `jsonian--backward-NAME'.
-NAME is an unquoted symbol.  ARG-LIST defines a single variable
-name which will be bound to the value of the character to
-examine.  PREDICATE is the function body to call.  A non-nil value
-determines that the argument is in the category NAME."
-  (declare (indent defun))
-  `(progn
-     (defun ,(intern (format "jsonian--backward-%s" name)) ()
-       (let ((,@arg-list))
-         (while (and (not (bobp)) (setq ,(car arg-list) (char-before)) ,predicate)
-           (backward-char))))
-     (defun ,(intern (format "jsonian--forward-%s" name)) ()
-       (let ((,@arg-list))
-         (while (and (not (eobp)) (setq ,(car arg-list) (char-after)) ,predicate)
-           (if (eolp) (forward-line) (forward-char)))))))
-
 (defmacro jsonian--defun-literal-traversal (literal)
   "Define `jsonian--forward-LITERAL' and `jsonian--backward-LITERAL'.
 LITERAL is the string literal to be traversed."
@@ -641,34 +624,9 @@ LITERAL is the string literal to be traversed."
              (if (eolp) (forward-line) (forward-char)))
          (jsonian--unexpected-char :forward ,(format "literal value \"%s\"" literal))))))
 
-(defmacro jsonian--defun-traverse (name &optional arg arg2)
-  "Define a functions to traverse literals or predicate defined range.
-Generated functions are `jsonian--forward-NAME' and
-`jsonian--backward-NAME'.  If NAME is a string literal, generate a
-function to parse the literal NAME.  It is illegal to supply ARG
-or ARG2 if NAME is a string literal.  If NAME is a symbol
-generated functions determine that a character (car ARG) is part
-of the parse group by calling ARG with (car ARG) bound to a
-character.  If NAME is a symbol, it is illegal not to supply ARG
-and ARG2."
-  (declare (indent defun))
-  (if (stringp name)
-      (progn
-        (when arg
-          (error "Unnecessary argument ARG"))
-        `(jsonian--defun-literal-traversal ,name))
-    (unless arg (error "Missing ARG"))
-    `(jsonian--defun-predicate-traversal ,name ,arg ,arg2)))
-
-(jsonian--defun-traverse "true")
-(jsonian--defun-traverse "false")
-(jsonian--defun-traverse "null")
-
-(jsonian--defun-traverse whitespace (x)
-  (or (= x ?\ )
-      (= x ?\t)
-      (= x ?\n)
-      (= x ?\r)))
+(jsonian--defun-literal-traversal "true")
+(jsonian--defun-literal-traversal "false")
+(jsonian--defun-literal-traversal "null")
 
 (defun jsonian--forward-number ()
   "Parse a JSON number forward.
@@ -701,9 +659,9 @@ For the definition of a number, see https://www.json.org/json-en.html"
                   (<= (char-after point) ?9))
         (setq point (1+ point))))
     ;; Exponent
-    (when (member (char-after point) '(?e ?E))
+    (when (memq (char-after point) '(?e ?E))
       (setq point (1+ point))
-      (when (member (char-after point) '(?- ?+)) ;; Exponent sign
+      (when (memq (char-after point) '(?- ?+)) ;; Exponent sign
         (setq point (1+ point)))
       (unless (and (char-after point)
                    (>= (char-after point) ?0)
@@ -760,9 +718,9 @@ left."
         (setq point (1- point)
               found-number t)))
     (when found-number ;; We need to see a number for an exponent
-      (when (member (char-before point) '(?+ ?-))
+      (when (memq (char-before point) '(?+ ?-))
         (setq point (1- point)))
-      (when (member (char-before point) '(?e ?E))
+      (when (memq (char-before point) '(?e ?E))
         (or (jsonian--backward-fraction (1- point))
             (jsonian--backward-integer (1- point)))))))
 

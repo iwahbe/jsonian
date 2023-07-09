@@ -94,17 +94,7 @@ setup for strictly JSON files.")
     (should (= (char-after) ?\ ))
     (forward-char)
     (jsonian--forward-true)
-    (should (= (char-after) ?,))
-    ))
-
-(ert-deftest jsonian--defun-traverse-predicate ()
-  (with-temp-buffer
-    (insert "867 \t\n 5309 world") (goto-char (point-min))
-    (jsonian--forward-whitespace)
-    (should (= (char-after) ?8))
-    (jsonian--forward-number)
-    (jsonian--forward-whitespace)
-    (should (= (char-after) ?5))))
+    (should (= (char-after) ?,))))
 
 (ert-deftest jsonian--traverse-string ()
   ;; Simple
