@@ -136,9 +136,6 @@ HEAD is the path segment for POINT."
 assembling the path it traversed as it goes.
 
 The caller is responsible for ensuring that `point' begins on a valid node."
-  ;; TODO: Write tests to call `jsonian-path' at multiple points in the same array in the
-  ;; same test. This will check that their cache values are distinct.
-
   ;; The number of previously encountered objects in this list (if we
   ;; are in a list).
   (cond

@@ -61,6 +61,35 @@ This function should be used only in testing."
 We run the JSONC setup for all files, but we only run the JSON
 setup for strictly JSON files.")
 
+(defun jsonian--test-against-text (text actions)
+  "Call ACTIONS with TEXT as the current buffer.
+
+`point' will correspond to each instance of $ in the buffer, and
+there must be one action per instance of $.
+
+Only the last action may edit the buffer.  Tests will be called on
+a shared buffer."
+  (let (points)
+    (with-temp-buffer
+      (insert text) (goto-char (point-min))
+      (while (search-forward "$" nil t)
+        (delete-char -1)
+        (setq points
+              (cons (point) points)))
+      (setq points (reverse points))
+      (setq text (buffer-string)))
+    (cl-assert (length= actions (length points)) nil
+               (format
+                "%s != %s: Action list didn't match the number of points"
+                (length actions) (length points)))
+    (with-temp-buffer
+      (insert text)
+      (dolist (p points)
+        (should (string= (buffer-string) text))
+        (goto-char p)
+        (funcall (prog1 (car actions)
+                   (setq actions (cdr actions))))))))
+
 (defmacro should-point (num)
   "Assert that NUM equals `point'."
   `(should (= (point) ,num)))
@@ -174,26 +203,43 @@ We test that all lines are unchanged"
 " (buffer-substring-no-properties (point-min) (point-max)))))))
 
 (ert-deftest jsonian-path ()
-  (with-file-and-point "path1.json" (point-min)
-    (should (equal
-             (jsonian-path nil 75)
-             '("fizz" 4 "some")))
-    (should (= (point) (point-min)))))
+  (jsonian--test-against-text
+   "${
+  \"f$oo\": {
+    \"b$ar\": $3
+  },
+  $\"empty\": nu$ll,
+  \"fizz\": [tr$ue, 2$, $\"3\", false, { \"some\": \"object\"$ }],
+  \"thing1\": \"thing2\"
+}
+"
+   (mapcar (lambda (expected)
+             (apply-partially
+              (lambda (e)
+                (should
+                 (equal (jsonian-path) e)))
+              expected))
+           '(nil
+             ("foo")
+             ("foo" "bar")
+             ("foo" "bar")
+             ("empty")
+             ("empty")
+             ("fizz" 0)
+             ("fizz" 1)
+             ("fizz" 2)
+             ("fizz" 4 "some")))))
 
-(ert-deftest jsonian-path-with-null ()
-  (with-file-and-point "path-with-null.json" (point-min)
-    (should (equal
-             (jsonian-path nil 19)
-             '("b")))
-    (should (= (point) (point-min)))))
-
-(ert-deftest jsonian-find-with-null ()
-  "Test that we can use `jsonian-find' with null values.
-This is different then `jsonian-path-with-null' because it tests
-cached descent, instead of ascent."
-  (with-file-and-point "path-with-null.json" (point-min)
-    (should (= (jsonian-find ".b") 18))
-    (should (= (jsonian-find ".a") 5))))
+(ert-deftest null-values ()
+  (jsonian--test-against-text
+   "$${
+  \"a\": null,
+  \"b\": true
+}
+"
+   (list
+    (lambda () (should (= (jsonian-find ".b") 18)))
+    (lambda () (should (= (jsonian-find ".a") 5))))))
 
 (ert-deftest jsonian-simple-segment ()
   "Check that we correctly identify simple segments."
