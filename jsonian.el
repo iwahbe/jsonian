@@ -332,6 +332,8 @@ It is assumed that `point' starts at a JSON token."
     t)
    ;; Otherwise we are looking at a non-string scalar token, so backtrack until we find a
    ;; separator or whitespace.
+   ;;
+   ;; TODO: Re-implement strict parsing
    (t (while (and (not (bobp))
                   (not (memq (char-before) '(?: ?, ?\{ ?\} ?\[ ?\] ?\s ?\t ?\n))))
         (backward-char))
@@ -378,6 +380,8 @@ a token, otherwise nil is returned."
    ;; Otherwise we are looking at a non-string scalar token, so parse forward
    ;; until we find a separator or whitespace (which implies that the token is
    ;; over).
+   ;;
+   ;; TODO: Reimpliment strict parsing
    (t (while (and (not (eobp))
                   (not (memq (char-after) '(?: ?, ?\{ ?\} ?\[ ?\] ?\s ?\t ?\n))))
         (forward-char))))
@@ -1409,9 +1413,7 @@ POS must be a valid node."
   "Return a list of elements in the collection at point.
 nil is returned if the object at point is not a collection."
   (save-excursion
-    (when (and
-           (jsonian--position-before-node) ;; TODO: Remove when all calls are from valid nodes
-           (jsonian--down-node))
+    (when (jsonian--down-node)
       (let (elements done
                      (obj-p (save-excursion (and (jsonian--forward-token)
                                                  (eq (char-after) ?:))))
