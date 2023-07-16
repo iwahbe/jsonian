@@ -241,6 +241,56 @@ We test that all lines are unchanged"
     (lambda () (should (= (jsonian-find ".b") 18)))
     (lambda () (should (= (jsonian-find ".a") 5))))))
 
+(ert-deftest traverse-nodes ()
+  (jsonian--test-against-text
+   "${ $$$\"one\": [ $$\"two\", $${ $$\"three\": 4 }, $$$[ ] ] }"
+   (list
+    ;; Beginning
+    (lambda ()
+      (should (eq (jsonian--down-node) t))
+      (should (= (point) 3)))
+    ;; "one":
+    (lambda ()
+      (should (eq (jsonian--forward-node) 'end))
+      (should (= (point) 3)))
+    (lambda ()
+      (should (eq (jsonian--backward-node) 'start))
+      (should (= (point) 3)))
+    (lambda ()
+      (should (eq (jsonian--down-node) t))
+      (should (= (point) 12)))
+    ;; "two"
+    (lambda ()
+      (should (eq (jsonian--forward-node) t))
+      (should (= (point) 19)))
+    (lambda ()
+      (should (eq (jsonian--down-node) nil))
+      (should (= (point) 12)))
+    ;; {
+    (lambda ()
+      (should (eq (jsonian--down-node) t))
+      (should (= (point) 21)))
+    (lambda ()
+      (should (eq (jsonian--forward-node) t))
+      (should (= (point) 35)))
+    ;; "three":
+    (lambda ()
+      (should (eq (jsonian--up-node) t))
+      (should (= (point) 19)))
+    (lambda ()
+      (should (eq (jsonian--down-node) nil))
+      (should (= (point) 21)))
+    ;; [
+    (lambda ()
+      (should (eq (jsonian--down-node) nil))
+      (should (eq (point) 35)))
+    (lambda ()
+      (should (eq (jsonian--forward-node) 'end))
+      (should (eq (point) 35)))
+    (lambda ()
+      (should (eq (jsonian--up-node) t))
+      (should (eq (point) 3))))))
+
 (ert-deftest jsonian-simple-segment ()
   "Check that we correctly identify simple segments."
   (mapc

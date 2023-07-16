@@ -187,7 +187,6 @@ This function assumes we are at the start of a node."
                 (and
                  (jsonian--forward-token)
                  ;; Prevent going into containers with no elements
-                 ;; TODO: Add test for this
                  (not (memq (char-after) '(?\] ?\})))))
                (?\" ;; We might be in a key, so lets check
                 (jsonian--forward-token)
