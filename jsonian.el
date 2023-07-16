@@ -1389,7 +1389,6 @@ is returned."
   "Provide a preview of the value of the node at POS.
 
 POS must be a valid node."
-  ;; TODO This functionality is not under test. Add tests.
   (save-excursion
     (goto-char pos)
     ;; Skip past a key if present

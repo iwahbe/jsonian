@@ -84,6 +84,7 @@ a shared buffer."
                 (length actions) (length points)))
     (with-temp-buffer
       (insert text)
+      (jsonian-mode)
       (dolist (p points)
         (should (string= (buffer-string) text))
         (goto-char p)
@@ -444,6 +445,26 @@ Specifically, we need to comply with what `completion-boundaries' describes."
      (" 01.2" t 3)
      ("00" t 2)
      ("100.00e00" t 1))))
+
+(ert-deftest jsonian-node-preview ()
+  "Test `jsonian--node-preview'."
+  (jsonian--test-against-text
+   "$[ $1.23e4 , $true ,$null, $false
+  , ${ $\"key\" : $\"value\" }
+]"
+   (mapcar
+    (lambda (expected)
+      (apply-partially
+       (lambda (e)
+         (should (equal
+                  (jsonian--node-preview (point))
+                  e)))
+       expected))
+    (list
+     (propertize "[ array ]" 'face 'font-lock-type-face)
+     "1.23e4" "true" "null" "false"
+     (propertize "{ object }" 'face 'font-lock-type-face)
+     "\"value\"" "\"value\""))))
 
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here
