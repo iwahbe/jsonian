@@ -181,27 +181,28 @@ a shared buffer."
 (ert-deftest jsonian-indent-specified ()
   "Load `indent1' and indent each line.
 We test that all lines are unchanged"
-  (dolist (file '("indent1.json" "pathological.jsonc"))
-    (with-file-and-point file (point-min)
-      (let ((jsonian-indentation 4)
-            (file-contents (buffer-string)))
-        (indent-region-line-by-line (point-min) (point-max))
-        (should (string= (buffer-string) file-contents))
-        (indent-region (point-min) (point-max))
-        (should (string= (buffer-string) file-contents)))))
-  (with-file-and-point "path1.json" (point-min)
-    (let ((jsonian-indentation 4))
-      (dotimes (l (count-lines (point-min) (point-max)))
-        (jsonian-indent-line)
-        (forward-line))
-      (should (string= "{
+  (let ((inhibit-message t))
+    (dolist (file '("indent1.json" "pathological.jsonc"))
+      (with-file-and-point file (point-min)
+                           (let ((jsonian-indentation 4)
+                                 (file-contents (buffer-string)))
+                             (indent-region-line-by-line (point-min) (point-max))
+                             (should (string= (buffer-string) file-contents))
+                             (indent-region (point-min) (point-max))
+                             (should (string= (buffer-string) file-contents)))))
+    (with-file-and-point "path1.json" (point-min)
+                         (let ((jsonian-indentation 4))
+                           (dotimes (l (count-lines (point-min) (point-max)))
+                             (jsonian-indent-line)
+                             (forward-line))
+                           (should (string= "{
     \"foo\": {
         \"bar\": 3
     },
     \"fizz\": [true, 2, \"3\", false, { \"some\": \"object\" }],
     \"thing1\": \"thing2\"
 }
-" (buffer-substring-no-properties (point-min) (point-max)))))))
+" (buffer-substring-no-properties (point-min) (point-max))))))))
 
 (ert-deftest jsonian-path ()
   (jsonian--test-against-text
@@ -361,17 +362,20 @@ Specifically, we need to comply with what `completion-boundaries' describes."
              '((1 . 58) (0 . 35))))))
 
 (ert-deftest jsonian-indent-line ()
-  (with-file-and-point "path1.json" 107
-    (insert ",")
-    (funcall-interactively #'newline-and-indent)
-    (should (= (point) 111))))
+  (with-file-and-point
+   "path1.json" 107
+   (insert ",")
+   (let ((inhibit-message t))
+     (funcall-interactively #'newline-and-indent))
+   (should (= (point) 111))))
 
 (ert-deftest jsonian-indered-indent ()
   "Check that we correctly infer the indentation of our test files."
   (mapc (lambda (file)
           (with-file-and-point (concat file ".json") (point-min)
             (let ((file-contents (buffer-string))
-                  (jsonian-default-indentation 7))
+                  (jsonian-default-indentation 7)
+                  (inhibit-message t))
               (indent-region-line-by-line (point-min) (point-max))
               (should (string= (buffer-string) file-contents)))))
         '("indent1" "children1" "path1")))
