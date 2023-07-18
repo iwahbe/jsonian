@@ -313,8 +313,10 @@ If the JSON is invalid then a `user-error' will be signaled."
 `jsonian--backward-token' will skip over any whitespace it finds.
 
 It is assumed that `point' starts at a JSON token."
-  ;; TODO Handle comments
-  (skip-chars-backward "\s\n\t")
+  ;; Skip backward over whitespace and comments
+  (while (or
+          (> (skip-chars-backward "\s\n\t") 0)
+          (jsonian--backward-comment)))
   (cond
    ;; No previous token, so do nothing
    ((bobp) nil)
@@ -363,7 +365,6 @@ It is assumed that `point' starts at a JSON token.
 
 t is returned if `jsonian--forward-token' successfully traversed
 a token, otherwise nil is returned."
-  ;; TODO Handle comments
   (cond
    ;; We are at the end of the buffer, so we can't do anything
    ((eobp) nil)
@@ -382,7 +383,10 @@ a token, otherwise nil is returned."
                   (not (memq (char-after) '(?: ?, ?\{ ?\} ?\[ ?\] ?\s ?\t ?\n))))
         (forward-char))))
   (setq jsonian--last-token-end (point))
-  (skip-chars-forward "\s\n\t")
+  ;; Skip forward over whitespace and comments
+  (while (or
+          (> (skip-chars-forward "\s\n\t") 0)
+          (jsonian--forward-comment)))
   (not (eobp)))
 
 (defun jsonian--position-before-node ()
@@ -798,9 +802,18 @@ returned."
 (defun jsonian--backward-comment ()
   "Traverse backward out of a comment."
   ;; In the body of a comment
-  (if-let (start (or (jsonian--enclosing-comment-p (point))
+  (when-let (start (or (jsonian--enclosing-comment-p (point))
                      (jsonian--enclosing-comment-p (1- (point)))))
-      (goto-char start)))
+    (goto-char start)))
+
+(defun jsonian--forward-comment ()
+  "Traverse forward out of a comment.
+Must be at the comment boundary."
+  (when (and
+         (derived-mode-p 'jsonian-c-mode)
+         (eq (char-after) ?/)
+         (memq (char-after (1+ (point))) '(?/ ?*)))
+    (forward-comment 1)))
 
 (defun jsonian--backward-string ()
   "Move back a string, starting at the ending \"."

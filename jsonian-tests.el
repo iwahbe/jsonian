@@ -245,13 +245,63 @@ We test that all lines are unchanged"
     (lambda () (should (= (jsonian-find ".b") 18)))
     (lambda () (should (= (jsonian-find ".a") 5))))))
 
-(ert-deftest traverse-tokens ()
-  "Assert that `jsonian--forward-token' works as expected.
+(defun jsonian--test-traverse-tokens (text mode)
+  "Check that `jsonian--forward-token' & `jsonian--backward-token' work.
 
-We do test this by annotating the start of each token with a ?$.
-We then check that each `jsonian--forward-token' jumps from token
-start to token start."
-  (let* ((text "$[
+TEXT is a string with each token start annotated with a ?$.
+
+MODE is the `major-mode' to run the test under.
+
+The test works by checking that each `jsonian--forward-token'
+jumps from token start to token start. We use same strategy in
+reverse to test `jsonian--backward-token'."
+  (let* ((tokens (with-temp-buffer
+                   (insert text) (goto-char (point-min))
+                   (count-matches "\\$")))
+         actual-token done initalized)
+    (jsonian--test-against-text
+     text
+     ;; For each match, assert that the last jump got to this token and mark the current
+     ;; jump as the destination of the next token.
+     (make-list tokens
+                (lambda ()
+                  (unless initalized
+                    (funcall mode)
+                    (setq initalized t))
+                  (when actual-token
+                    (should (= actual-token (point))))
+                  (should (not done))
+                  (setq done (not (jsonian--forward-token))
+                        actual-token (point)))))
+    (should done)
+
+    ;; Reset the test and now walk backwards
+    (setq done nil
+          actual-token nil
+          initalized nil)
+    (jsonian--test-against-text
+     text
+     ;; For each match, assert that the last jump got to this token and mark the current
+     ;; jump as the destination of the next token.
+     (make-list tokens
+                (lambda ()
+                  (unless initalized
+                    (funcall mode)
+                    (setq initalized t))
+                  (when actual-token
+                    (should (= actual-token (point))))
+                  (should (not done))
+                  (setq done (not (jsonian--backward-token))
+                        actual-token (point))))
+     'backwards)
+    (should done)))
+
+(ert-deftest traverse-tokens ()
+  "Check that `jsonian--forward-token' & `jsonian--backward-token' work.
+
+This is for non-commented `jsonian-mode' code."
+  (jsonian--test-traverse-tokens
+   "$[
     $\"[\"$,
     $true$, $false
     $\"]\"$,
@@ -268,40 +318,45 @@ $,    ${
     $}      $, $null
 
 $]
-")
-         (tokens (with-temp-buffer
-                   (insert text) (goto-char (point-min))
-                   (count-matches "\\$")))
-         actual-token done)
-    (jsonian--test-against-text
-     text
-     ;; For each match, assert that the last jump got to this token and mark the current
-     ;; jump as the destination of the next token.
-     (make-list tokens
-                (lambda ()
-                  (when actual-token
-                    (should (= actual-token (point))))
-                  (should (not done))
-                  (setq done (not (jsonian--forward-token))
-                        actual-token (point)))))
-    (should done)
+" #'jsonian-mode))
 
-    ;; Reset the test and now walk backwards
-    (setq done nil
-          actual-token nil)
-    (jsonian--test-against-text
-     text
-     ;; For each match, assert that the last jump got to this token and mark the current
-     ;; jump as the destination of the next token.
-     (make-list tokens
-                (lambda ()
-                  (when actual-token
-                    (should (= actual-token (point))))
-                  (should (not done))
-                  (setq done (not (jsonian--backward-token))
-                        actual-token (point))))
-     'backwards)
-    (should done)))
+(ert-deftest traverse-tokens-with-comments ()
+  "Test token traversal with `jsonian-c-mode'.
+
+We confirm that `jsonian--forward-token' and
+`jsonian--backward-token' work with comments.
+
+This test employs the same strategy as `traverse-tokens'."
+  (jsonian--test-traverse-tokens
+   "$[
+    /* [ */
+    // {
+    $\"[\"$,
+    $true$,
+    $\"]\"$,
+    // }
+    /* ] */
+    $false
+    ${
+        //
+        $\"a\"$: $1$,
+        //
+        $\"b\"
+            $:
+            $2
+        //
+        $,
+        //
+        $\"c\"$: $3
+        //
+    $}
+    /*
+       a
+         b
+        c
+     */
+$]
+" #'jsonian-c-mode))
 
 (ert-deftest traverse-nodes ()
   (jsonian--test-against-text
