@@ -61,14 +61,16 @@ This function should be used only in testing."
 We run the JSONC setup for all files, but we only run the JSON
 setup for strictly JSON files.")
 
-(defun jsonian--test-against-text (text actions)
+(defun jsonian--test-against-text (text actions &optional backward)
   "Call ACTIONS with TEXT as the current buffer.
 
 `point' will correspond to each instance of $ in the buffer, and
 there must be one action per instance of $.
 
 Only the last action may edit the buffer.  Tests will be called on
-a shared buffer."
+a shared buffer.
+
+If BACKWARD is non-nil, $ will be traversed backwards."
   (let (points)
     (with-temp-buffer
       (insert text) (goto-char (point-min))
@@ -76,7 +78,7 @@ a shared buffer."
         (delete-char -1)
         (setq points
               (cons (point) points)))
-      (setq points (reverse points))
+      (setq points (funcall (if backward #'identity #'reverse) points))
       (setq text (buffer-string)))
     (cl-assert (length= actions (length points)) nil
                (format
@@ -242,6 +244,64 @@ We test that all lines are unchanged"
    (list
     (lambda () (should (= (jsonian-find ".b") 18)))
     (lambda () (should (= (jsonian-find ".a") 5))))))
+
+(ert-deftest traverse-tokens ()
+  "Assert that `jsonian--forward-token' works as expected.
+
+We do test this by annotating the start of each token with a ?$.
+We then check that each `jsonian--forward-token' jumps from token
+start to token start."
+  (let* ((text "$[
+    $\"[\"$,
+    $true$, $false
+    $\"]\"$,
+    $false
+$,    ${
+        $\"a\"$: $1.3e8$,
+        $\"b\"
+            $:
+            $2
+
+        $,
+
+        $\"c\"$: $3
+    $}      $, $null
+
+$]
+")
+         (tokens (with-temp-buffer
+                   (insert text) (goto-char (point-min))
+                   (count-matches "\\$")))
+         actual-token done)
+    (jsonian--test-against-text
+     text
+     ;; For each match, assert that the last jump got to this token and mark the current
+     ;; jump as the destination of the next token.
+     (make-list tokens
+                (lambda ()
+                  (when actual-token
+                    (should (= actual-token (point))))
+                  (should (not done))
+                  (setq done (not (jsonian--forward-token))
+                        actual-token (point)))))
+    (should done)
+
+    ;; Reset the test and now walk backwards
+    (setq done nil
+          actual-token nil)
+    (jsonian--test-against-text
+     text
+     ;; For each match, assert that the last jump got to this token and mark the current
+     ;; jump as the destination of the next token.
+     (make-list tokens
+                (lambda ()
+                  (when actual-token
+                    (should (= actual-token (point))))
+                  (should (not done))
+                  (setq done (not (jsonian--backward-token))
+                        actual-token (point))))
+     'backwards)
+    (should done)))
 
 (ert-deftest traverse-nodes ()
   (jsonian--test-against-text
