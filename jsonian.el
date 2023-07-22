@@ -384,9 +384,7 @@ a token, otherwise nil is returned."
         (forward-char))))
   (setq jsonian--last-token-end (point))
   ;; Skip forward over whitespace and comments
-  (while (or
-          (> (skip-chars-forward "\s\n\t") 0)
-          (jsonian--forward-comment)))
+  (jsonian--skip-chars-forward "\s\n\t")
   (not (eobp)))
 
 (defun jsonian--position-before-node ()
@@ -417,7 +415,25 @@ before a node."
                 (jsonian--backward-token)) ;; Move behind the string
             t)))))
 
+(defun jsonian--skip-chars-backward (chars)
+  "Skip CHARS backwards in a comment aware way."
+  (let ((start (point)))
+    (while (or
+            (> (skip-chars-backward chars) 0)
+            (jsonian--backward-comment)))
+    (- start (point))))
+
+(defun jsonian--skip-chars-forward (chars)
+  "Skip CHARS forward in a comment aware way."
+  (let ((start (point)))
+    (while (or
+            (> (skip-chars-forward chars) 0)
+            (jsonian--forward-comment)))
+    (- (point) start)))
+
 (defun jsonian--position-before-token ()
+  ;; TODO: Rename to `jsonian--position-at-token', since this now takes the closest of
+  ;; tokens in both directions.
   "Position `point' before a token.
 This function moves forward through whitespace but backwards through tokens.
 nil is returned if `jsonian--position-before-token' failed to move `point'
@@ -437,37 +453,84 @@ result:
 
 The cursor will move so `char-after' will give the ?\" that begins
 \"fizz buzz\"."
-  ;; TODO Handle comments
   ;; TODO Add tests to ensure that adjusted position is stable:
   ;;      (jsonian--position-before-token)
   ;;      (let ((p (point)))
   ;;        (jsonian--position-before-token)
   ;;        (should (= (point) p)))
+
+  ;; We are looking for the "nearest" token to position the cursor at.
   ;;
-  ;; TODO Add tests to ensure that `jsonian--position-before-token' will find a token
-  ;; given the buffer "|\n{"
-  (if-let (start (jsonian--pos-in-stringp))
-      (goto-char start)
-    ;; We are not in a string, so we are free to trust whitespace.
-    (let ((skipped (skip-chars-forward "\s\t")))
-      (if (and (> skipped 0) (not (eolp)))
-          ;; We have skipped over whitespace to significant char and we are not in a string.
-          ;; Since whitespace is not valid inside JSON values, we are at the beginning of a
-          ;; value or at the end of the buffer.
-          t
-        ;; If we skipped forward and there are no longer tokens on that line, we skip
-        ;; backward until we find something significant.
-        (when (and (= skipped 0) (or (memq (char-after) '(?\s ?\t ?\n)) (eobp)))
-          (skip-chars-backward "\s\t\n")
-          (backward-char))
-        (when (bobp)
-          (skip-chars-forward "\s\t\n"))
-        (if (memq (char-after) '(?: ?, ?\} ?\]))
-            (not (eobp))
-          ;; We are in the middle of a node, so backtrack until at the beginning
-          (while (not (or (bobp) (memq (char-before) '(?: ?, ?\s ?\t ?\n ?\{ ?\[))))
-            (backward-char))
-          (not (eobp)))))))
+  ;; We do this by looking for the nearest token on the left and the right.  If we find
+  ;; tokens on the left and the right, we take whichever is closest to `center', which is
+  ;; where we started looking from.
+  (let* ((center (point))
+         left-end
+         (left
+          ;; Find the left most valid starting token
+          (if-let (start (jsonian--pos-in-stringp))
+              start
+            (when-let (start (jsonian--enclosing-comment-p (point)))
+              (goto-char start))
+
+            (jsonian--skip-chars-backward "\s\t\n")
+            (unless (bobp)
+              (pcase (char-before)
+                ((or ?: ?, ?\{ ?\} ?\[ ?\]) (1- (point)))
+                (?\" (jsonian--backward-string)
+                     (point))
+                (_ (while (not (or (bobp)
+                                   (memq (char-before) '(?: ?, ?\s ?\t ?\n ?\{ ?\} ?\[ ?\]))))
+                     (backward-char))
+                   (unless (bobp)
+                     (point)))))))
+         (right (cond
+                 ;; If left=center, there is no point in trying to calculate `right',
+                 ;; since it cannot be better then left.
+                 ((eq left center) nil)
+                 (left
+                  ;; If we have a left token, we can just traverse forward from the left
+                  ;; token to get the right token.
+                  (goto-char left)
+                  (when (and (jsonian--forward-token)
+                             (>= center (setq left-end jsonian--last-token-end)))
+                    ;; If center is within the node found by left, we take that
+                    ;; token regardless of distance. This is necessary to ensure
+                    ;; idenpotency for tightly packed tokens.
+                    (point)))
+                 (t
+                  ;; We have no left token, so we need to parse to the right token.
+                  (goto-char center)
+                  (when-let (start (jsonian--enclosing-comment-p (point)))
+                    (goto-char start))
+                  (jsonian--skip-chars-forward "\s\t\n")
+                  (unless (eobp)
+                    (point))))))
+    (goto-char
+     (or
+      (if (and left right)
+          ;; If we have both left and right, we look at their line positions.
+          (let ((center-line (line-number-at-pos center))
+                (left-line (line-number-at-pos left))
+                (right-line (line-number-at-pos right)))
+            (cond
+             ;; If `left' ^ `right' is on the same line as `center' we take that token.
+             ((and (= center-line left-line)
+                   (not (= center-line right-line)))
+              left)
+             ((and (= center-line right-line)
+                   (not (= center-line left-line)))
+              right)
+             (t
+              ;; If the tokens are on different lines, we set check against the end of the
+              ;; left token instead of the left token itself.
+              (if (<= (- center (if (and (not (= center-line left-line right-line)) left-end)
+                                    left-end left))
+                      (- right center))
+                  left
+                right))))
+        (or left right))
+      center))))
 
 (defun jsonian--display-path (path &optional pretty)
   "Convert the reconstructed JSON path PATH to a string.

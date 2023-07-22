@@ -358,6 +358,72 @@ This test employs the same strategy as `traverse-tokens'."
 $]
 " #'jsonian-c-mode))
 
+(ert-deftest position-before-token ()
+  "Check that we are able to move `point' to position before a token."
+  (cl-flet* ((test-mode (text mode)
+               (let* ((result (with-temp-buffer
+                                (insert text)
+                                (goto-char (point-min))
+                                (search-forward "|")
+                                (cons
+                                 ;; The desired point is one less then the index of |,
+                                 ;; representing the char before |.
+                                 ;;
+                                 ;;If $ is before it, then we need one less because the $
+                                 ;;will also be removed.
+                                 (let ((end-pos (1- (point))))
+                                   (if (string-search "$" (buffer-substring (point-min) end-pos))
+                                       (1- end-pos)
+                                     end-pos))
+                                 (progn
+                                   (delete-char -1)
+                                   (buffer-string)))))
+                      (end-pos (car result))
+                      (text (cdr result)))
+                 (jsonian--test-against-text
+                  text
+                  (list (lambda ()
+                          (funcall mode)
+                          (should (jsonian--position-before-token))
+                          (should (= end-pos (point))))))))
+             (test (text)
+               (test-mode text #'jsonian-mode))
+             (w-comments (text)
+               (test-mode text #'jsonian-c-mode)))
+    (test "{ \"foo\": |\"in$string\" }")
+    (test "$\n|{\n }")
+    (test "$  |{ \n }")
+    (test "[  |${ \n } ]")
+    (test "[ |3$.14 ]")
+    (test "[ true$ |, false ]")
+    (test "[ |tru$e , false ]")
+    (test "[ true |$, false ]")
+    (w-comments "[ true /* comment$ */ |]")
+    (w-comments "[
+/*false*/
+|true
+/*fa$lse*/
+]")
+    (w-comments "[
+/*false*/
+|true
+/*fa$lse*/
+]")
+    (w-comments "|[
+/*$false*/
+true
+/*false*/
+]")
+    (w-comments "[
+/*false*/
+true
+/*false$*/
+|]")
+    (w-comments "{\"key\"// foo
+/* separator: */ |: // separator end$
+\"value\"
+}")))
+
 (ert-deftest traverse-nodes ()
   (jsonian--test-against-text
    "${ $$$\"one\": [ $$\"two\", $${ $$\"three\": 4 }, $$$[ ] ] }"
