@@ -434,14 +434,18 @@ before a node."
 (defun jsonian--position-before-token ()
   ;; TODO: Rename to `jsonian--position-at-token', since this now takes the closest of
   ;; tokens in both directions.
-  "Position `point' before a token.
-This function moves forward through whitespace but backwards through tokens.
-nil is returned if `jsonian--position-before-token' failed to move `point'
-before a token.
+  "Position `point' at the \"nearest\" token.
+If `point' is within a token, it is moved to point at that token.
+Otherwise, `point' is moved to point at the nearest token on the
+same line.  Otherwise `point' is moved to point to the nearest
+token period.
+
+Nearest is defined to be point that minimizes (abs (- (point)
+previous)).
 
 Consider the following example, with `point' starting at $:
 
-{ \"foo\":    \"fizz $buzz\" }
+    { \"foo\":    \"fizz $buzz\" }
 
 `jsonian--position-before-token' will move the point so `char-after' is the ?\"
 that begins \"fizz buzz\".
@@ -449,16 +453,15 @@ that begins \"fizz buzz\".
 With the same example and different cursor position, we will see the same
 result:
 
-{ \"foo\": $   \"fizz buzz\" }
+    { \"foo\": $   \"fizz buzz\" }
 
-The cursor will move so `char-after' will give the ?\" that begins
+The cursor will move so `char-after' will give the ?:.  If we
+move the starting point over:
+
+    { \"foo\":   $ \"fizz buzz\" }
+
+we instead move so that `char-after' gives the ?\" that begins
 \"fizz buzz\"."
-  ;; TODO Add tests to ensure that adjusted position is stable:
-  ;;      (jsonian--position-before-token)
-  ;;      (let ((p (point)))
-  ;;        (jsonian--position-before-token)
-  ;;        (should (= (point) p)))
-
   ;; We are looking for the "nearest" token to position the cursor at.
   ;;
   ;; We do this by looking for the nearest token on the left and the right.  If we find
