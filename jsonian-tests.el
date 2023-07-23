@@ -375,6 +375,21 @@ This test employs the same strategy as `traverse-tokens'."
 $]
 " #'jsonian-c-mode))
 
+(ert-deftest traverse-invalid-tokens ()
+  "Assert that traversing an invalid node gives a helpful error message."
+  (jsonian--test-against-text
+   "[ $truefalse$, $3.1.4 $, $nil$]"
+   (mapcar (lambda (f)
+             (apply-partially
+              (lambda (f) (should-error (funcall f) :type 'user-error))
+              f))
+           (list #'jsonian--forward-token
+                 #'jsonian--backward-token
+                 #'jsonian--forward-token
+                 #'jsonian--backward-token
+                 #'jsonian--forward-token
+                 #'jsonian--backward-token))))
+
 (ert-deftest position-before-token ()
   "Check that we are able to move `point' to position before a token."
   (cl-flet* ((test-mode (text mode)
@@ -405,7 +420,7 @@ $]
                           ;; correctly. The second asserts that when we are before a
                           ;; token, we don't move on the next call.
                           (dotimes (_ 2)
-                            (should (jsonian--position-before-token))
+                            (should (jsonian--snap-to-token))
                             (should (= end-pos (point)))))))))
              (test (text)
                (test-mode text #'jsonian-mode))

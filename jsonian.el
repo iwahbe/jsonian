@@ -246,7 +246,7 @@ This function assumes we are at the start of a node."
         (ret (pcase (char-after)
                ((or ?\[ ?\{) ; We are at the start of a list
                 (forward-list)
-                (if (jsonian--position-before-token)
+                (if (jsonian--snap-to-token)
                     (jsonian--forward-token-comma)
                   'eob))
                (?\"
@@ -317,25 +317,29 @@ It is assumed that `point' starts at a JSON token."
   (while (or
           (> (skip-chars-backward "\s\n\t") 0)
           (jsonian--backward-comment)))
-  (cond
-   ;; No previous token, so do nothing
-   ((bobp) nil)
-   ;; Found a single char token, so move behind it
-   ((memq (char-before) '(?: ?, ?\[ ?\] ?\{ ?\}))
-    (backward-char)
-    t)
-   ;; Found a string, so traverse it
-   ((eq (char-before) ?\")
-    (jsonian--backward-string)
-    t)
-   ;; Otherwise we are looking at a non-string scalar token, so backtrack until we find a
-   ;; separator or whitespace.
-   ;;
-   ;; TODO: Re-implement strict parsing
-   (t (while (and (not (bobp))
-                  (not (memq (char-before) '(?: ?, ?\{ ?\} ?\[ ?\] ?\s ?\t ?\n))))
-        (backward-char))
-      t)))
+  (let* ((needs-seperator t)
+         (v (pcase (char-before)
+              ;; No previous token, so do nothing
+              ((pred null) nil)
+              ;; Found a single char token, so move behind it
+              ((or ?: ?, ?\[ ?\] ?\{ ?\})
+               (setq needs-seperator nil)
+               (backward-char) t)
+              ;; Found a string, so traverse it
+              (?\" (jsonian--backward-string) t)
+              (?l (jsonian--backward-null) t)
+              (?e (pcase (char-before (1- (point)))
+                    (?u (jsonian--backward-true) t)
+                    (?s (jsonian--backward-false) t)
+                    (_ (save-excursion (backward-char)
+                                       (jsonian--unexpected-char :backward "\"u\" or \"s\"")))))
+              ((pred (lambda (c) (and (<= c ?9) (>= c ?0))))
+               (jsonian--backward-number) t)
+              (_ (jsonian--unexpected-char :backward "one of ':,[]{}\"le0123456789'")))))
+    (when (and needs-seperator
+               (not (memq (char-before) '(nil ?: ?, ?\[ ?\] ?\{ ?\} ?\s ?\t ?\n))))
+      (jsonian--unexpected-char :backward "one of ':,[]{}\\s\\t\\n' or BOF"))
+    v))
 
 (defvar-local jsonian--last-token-end nil
   "The end of the last token that `jsonian--forward-token' parsed.
@@ -365,26 +369,32 @@ It is assumed that `point' starts at a JSON token.
 
 t is returned if `jsonian--forward-token' successfully traversed
 a token, otherwise nil is returned."
-  (cond
-   ;; We are at the end of the buffer, so we can't do anything
-   ((eobp) nil)
-   ;; Found a single char token, so move ahead of it
-   ((memq (char-after) '(?: ?, ?\[ ?\] ?\{ ?\}))
-    (forward-char))
-   ;; Found a string, so traverse it
-   ((eq (char-after) ?\")
-    (jsonian--forward-string))
-   ;; Otherwise we are looking at a non-string scalar token, so parse forward
-   ;; until we find a separator or whitespace (which implies that the token is
-   ;; over).
-   ;;
-   ;; TODO: Reimpliment strict parsing
-   (t (while (and (not (eobp))
-                  (not (memq (char-after) '(?: ?, ?\{ ?\} ?\[ ?\] ?\s ?\t ?\n))))
-        (forward-char))))
-  (setq jsonian--last-token-end (point))
-  ;; Skip forward over whitespace and comments
-  (jsonian--skip-chars-forward "\s\n\t")
+  (let ((needs-seperator t))
+    (pcase (char-after)
+      ;; We are at the end of the buffer, so we can't do anything
+      ((pred null) nil)
+      ;; Found a single char token, so move ahead of it
+      ((or ?: ?, ?\[ ?\] ?\{ ?\})
+       (setq needs-seperator nil)
+       (forward-char))
+      ;; Found a string, so traverse it
+      (?\" (jsonian--forward-string))
+      ;; Otherwise we are looking at a non-string scalar token, so parse forward
+      ;; until we find a separator or whitespace (which implies that the token is
+      ;; over).
+      (?t (jsonian--forward-true))
+      (?f (jsonian--forward-false))
+      (?n (jsonian--forward-null))
+      ((pred (lambda (c) (and (<= c ?9) (>= c ?0))))
+       (jsonian--forward-number))
+      ;; This is the set of chars that can start a token
+      (_ (jsonian--unexpected-char :forward "one of ':,[]{}\"tfn0123456789'")))
+    (setq jsonian--last-token-end (point))
+    ;; Skip forward over whitespace and comments
+    (when (and (= (jsonian--skip-chars-forward "\s\n\t") 0)
+               needs-seperator
+               (not (memq (char-after) '(nil ?: ?, ?\[ ?\] ?\{ ?\} ?\s ?\t ?\n))))
+      (jsonian--unexpected-char :forward "one of ':,[]{}\\s\\t\\n' or EOF")))
   (not (eobp)))
 
 (defun jsonian--position-before-node ()
@@ -392,7 +402,7 @@ a token, otherwise nil is returned."
 This function moves forward through whitespace but backwards through the node.
 nil is returned if `jsonian--position-before-node' failed to move `point' to
 before a node."
-  (when (jsonian--position-before-token)
+  (when (jsonian--snap-to-token)
     (pcase (char-after)
       ;; The token indicates that we are the second token within a "key: value"
       ;; node.
@@ -431,9 +441,7 @@ before a node."
             (jsonian--forward-comment)))
     (- (point) start)))
 
-(defun jsonian--position-before-token ()
-  ;; TODO: Rename to `jsonian--position-at-token', since this now takes the closest of
-  ;; tokens in both directions.
+(defun jsonian--snap-to-token ()
   "Position `point' at the \"nearest\" token.
 If `point' is within a token, it is moved to point at that token.
 Otherwise, `point' is moved to point at the nearest token on the
@@ -447,7 +455,7 @@ Consider the following example, with `point' starting at $:
 
     { \"foo\":    \"fizz $buzz\" }
 
-`jsonian--position-before-token' will move the point so `char-after' is the ?\"
+`jsonian--snap-to-token' will move the point so `char-after' is the ?\"
 that begins \"fizz buzz\".
 
 With the same example and different cursor position, we will see the same
@@ -627,7 +635,7 @@ it traverses existing structures in the buffer JSON.  It does not
 need to be a leaf path."
   (save-excursion
     (goto-char (point-min))
-    (jsonian--position-before-token)
+    (jsonian--snap-to-token)
     (let (failed leaf current-segment traversed)
       (while (and path (not failed) (not leaf))
         (unless (seq-some
