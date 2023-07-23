@@ -246,9 +246,8 @@ This function assumes we are at the start of a node."
         (ret (pcase (char-after)
                ((or ?\[ ?\{) ; We are at the start of a list
                 (forward-list)
-                (if (jsonian--snap-to-token)
-                    (jsonian--forward-token-comma)
-                  'eob))
+                (jsonian--skip-chars-forward "\s\n\t")
+                (if (eobp) 'eob (jsonian--forward-token-comma)))
                (?\"
                 (jsonian--forward-token)
                 (if (equal (char-after) ?\:)  ; `equal' to obviate the `eobp' check
@@ -1026,10 +1025,10 @@ Valid options for TYPE are `font-lock-string-face' and `font-lock-keyword-face'.
      (t (error "'%s' is not a valid type" type)))))
 
 (defun jsonian--at-collection (pos)
-  "Check if POS is before a collection."
+  "Check if POS is before a collection.
+POS must be a valid node location."
   (save-excursion
     (goto-char pos)
-    (jsonian--snap-to-node)
     (jsonian--down-node)))
 
 
