@@ -110,7 +110,7 @@ b. leveraging C code whenever possible."
   (with-current-buffer (or buffer (current-buffer))
     (save-excursion
       (when pos (goto-char pos))
-      (jsonian--position-before-node)
+      (jsonian--snap-to-node)
       (let ((result (jsonian--reconstruct-path (jsonian--path))) display)
         (when (called-interactively-p 'interactive)
           (setq display (jsonian--display-path result (not plain)))
@@ -397,10 +397,10 @@ a token, otherwise nil is returned."
       (jsonian--unexpected-char :forward "one of ':,[]{}\\s\\t\\n' or EOF")))
   (not (eobp)))
 
-(defun jsonian--position-before-node ()
+(defun jsonian--snap-to-node ()
   "Position `point' before a node.
 This function moves forward through whitespace but backwards through the node.
-nil is returned if `jsonian--position-before-node' failed to move `point' to
+nil is returned if `jsonian--snap-to-node' failed to move `point' to
 before a node."
   (when (jsonian--snap-to-token)
     (pcase (char-after)
@@ -411,13 +411,13 @@ before a node."
       ;; front. Move back one token and try again.
       (?,
        (jsonian--backward-token)
-       (jsonian--position-before-node))
+       (jsonian--snap-to-node))
       ;; We are at the end of a container, so move back inside the container and
       ;; try again
       ((or ?\] ?\})
        (skip-chars-backward "\s\n\t}]") ; Skip out of enclosing nodes
        (backward-char)                  ; Skip into the last node being enclosed
-       (jsonian--position-before-node)) ; Return that node
+       (jsonian--snap-to-node)) ; Return that node
       ;; We are either at the front of a node, or prefixed with a key
       (_  (if (save-excursion (and (jsonian--backward-token) (eq (char-after) ?:)))
               (progn
@@ -669,7 +669,7 @@ If ARG is not nil, move to the ARGth enclosing item."
   (if arg
       (cl-assert (wholenump arg) t "Invalid input to `jsonian-enclosing-item'.")
     (setq arg 1))
-  (unless (jsonian--position-before-node)
+  (unless (jsonian--snap-to-node)
     (user-error "Failed to find a JSON node at point"))
   (while (and (> arg 0) (jsonian--up-node))
     (cl-decf arg 1))
@@ -1029,7 +1029,7 @@ Valid options for TYPE are `font-lock-string-face' and `font-lock-keyword-face'.
   "Check if POS is before a collection."
   (save-excursion
     (goto-char pos)
-    (jsonian--position-before-node)
+    (jsonian--snap-to-node)
     (jsonian--down-node)))
 
 
@@ -1281,7 +1281,7 @@ If PATH is supplied, navigate to it."
             (or path
                 (completing-read "Select Element: " #'jsonian--find-completion nil t
                                  (save-excursion
-                                   (jsonian--position-before-node)
+                                   (jsonian--snap-to-node)
                                    (when-let* ((path (jsonian--reconstruct-path (jsonian--path)))
                                                (display (jsonian--display-path path t)))
                                      display))))))
@@ -1865,7 +1865,7 @@ containing array/object."
 ARG is currently ignored."
   (ignore arg) ;; TODO use ARG correctly
   (and
-   (jsonian--position-before-node)
+   (jsonian--snap-to-node)
    (jsonian--up-node)))
 
 (defun jsonian-end-of-defun (&optional arg)
@@ -1873,7 +1873,7 @@ ARG is currently ignored."
 ARG is currently ignored."
   (ignore arg)
   (when (and
-         (jsonian--position-before-node)
+         (jsonian--snap-to-node)
          (jsonian--up-node))
     (pcase (char-after)
       ((or ?\[ ?\{)
