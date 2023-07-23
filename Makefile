@@ -14,7 +14,7 @@ clean:
 	@# We do this so removed files are listed
 	@if compgen -G "*.elc" > /dev/null; then \
 	  for f in *.elc; do                     \
-    echo "rm $$f" && rm $$f;                 \
+              echo "rm $$f" && rm $$f;           \
 	  done                                   \
     fi
 	@rm -rf bin
@@ -24,14 +24,14 @@ clean:
 lint: checkdoc package-lint
 
 package-lint:
-	$(EMACS) -Q --batch                                                        \
-	  --eval "(progn (setq package-user-dir \"$$(pwd)/bin\")                   \
-      (require 'package)                                                     \
+	$(EMACS) -Q --batch \
+	  --eval "(progn (setq package-user-dir \"$$(pwd)/bin\") \
+      (require 'package) \
       (push '(\"melpa\" . \"https://melpa.org/packages/\") package-archives) \
-	    (package-initialize)                                                   \
-      (unless package-archive-contents                                       \
-        (package-refresh-contents))                                          \
-	    (package-install 'package-lint))"                                      \
+	    (package-initialize) \
+      (unless package-archive-contents \
+        (package-refresh-contents)) \
+	    (package-install 'package-lint))" \
 	  -f package-lint-batch-and-exit jsonian.el
 
 checkdoc:
