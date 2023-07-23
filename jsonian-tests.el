@@ -401,12 +401,17 @@ $]
                   text
                   (list (lambda ()
                           (funcall mode)
-                          (should (jsonian--position-before-token))
-                          (should (= end-pos (point))))))))
+                          ;; We do the test twice. The first asserts that we traveled
+                          ;; correctly. The second asserts that when we are before a
+                          ;; token, we don't move on the next call.
+                          (dotimes (_ 2)
+                            (should (jsonian--position-before-token))
+                            (should (= end-pos (point)))))))))
              (test (text)
                (test-mode text #'jsonian-mode))
              (w-comments (text)
                (test-mode text #'jsonian-c-mode)))
+    ;; Each test starts at $ and asserts that `point' ends at |.
     (test "{ \"foo\": |\"in$string\" }")
     (test "$\n|{\n }")
     (test "$  |{ \n }")
