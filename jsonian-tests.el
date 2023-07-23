@@ -80,7 +80,8 @@ If BACKWARD is non-nil, $ will be traversed backwards."
               (cons (point) points)))
       (setq points (funcall (if backward #'identity #'reverse) points))
       (setq text (buffer-string)))
-    (cl-assert (length= actions (length points)) nil
+    ;; NOTE: `length=' is not available in Emacs 27.1
+    (cl-assert (= (length actions) (length points)) nil
                (format
                 "%s != %s: Action list didn't match the number of points"
                 (length actions) (length points)))
@@ -404,7 +405,9 @@ $]
                                  ;;If $ is before it, then we need one less because the $
                                  ;;will also be removed.
                                  (let ((end-pos (1- (point))))
-                                   (if (string-search "$" (buffer-substring (point-min) end-pos))
+                                   ;; `string-search' is not available on Emacs 27.1
+                                   (if (save-excursion (goto-char (point-min))
+                                                       (search-forward "$" end-pos t))
                                        (1- end-pos)
                                      end-pos))
                                  (progn
