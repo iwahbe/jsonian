@@ -175,10 +175,27 @@ If BACKWARD is non-nil, $ will be traversed backwards."
     (should-not (jsonian--string-scan-back))))
 
 (ert-deftest jsonian--pos-in-keyp ()
-  (with-temp-buffer
-    (insert "\"foo\": 3")
-    (goto-char 2)
-    (should (jsonian--pos-in-keyp))))
+  (cl-flet ((is (bool)
+              (apply-partially
+               (lambda (bool)
+                 (if bool
+                     (should (jsonian--pos-in-keyp))
+                   (should (not (jsonian--pos-in-keyp)))))
+               bool)))
+    (jsonian--test-against-text
+     "{
+$\"$k1$\"$: $3,
+\"$k2\"$  :  \"$value\",
+\"$k3\"
+        $:
+                \"true\",
+\"$\" : null
+  }"
+     (list
+      (is nil) (is t) (is t) (is nil) (is nil)
+      (is t) (is nil) (is nil)
+      (is t) (is nil)
+      (is t)))))
 
 (ert-deftest jsonian-indent-specified ()
   "Load `indent1' and indent each line.

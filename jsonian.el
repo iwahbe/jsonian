@@ -966,8 +966,7 @@ the beginning of a string."
   (save-excursion
     (when (jsonian--string-scan-forward at-beginning)
       (let ((end (point)))
-        ;; TODO: The `skip-chars-forward' functionality is never tested.
-        (skip-chars-forward "\s\t\n\r")
+        (skip-chars-forward "\s\t\n")
         (and (= (char-after) ?:) end)))))
 
 (defun jsonian--after-key (pos)
