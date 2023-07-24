@@ -298,9 +298,9 @@ This function assumes we are at the start of a node."
   "Move `point' over a separating ','.
 
 If the end of a container or the buffer is reached, then `eob'
-and `end' will be send respectively.
+or `end' will be sent, respectively.
 
-If the JSON is invalid then `jsonian--unexpected-char' will be called"
+If the JSON is invalid then `jsonian--unexpected-char' will be called."
   (pcase (char-after)
     ((or ?\] ?\}) 'end)
     (?, (jsonian--forward-token))
@@ -312,10 +312,7 @@ If the JSON is invalid then `jsonian--unexpected-char' will be called"
 `jsonian--backward-token' will skip over any whitespace it finds.
 
 It is assumed that `point' starts at a JSON token."
-  ;; Skip backward over whitespace and comments
-  (while (or
-          (> (skip-chars-backward "\s\n\t") 0)
-          (jsonian--backward-comment)))
+  (jsonian--skip-chars-backward "\s\n\t")
   (let* ((needs-seperator t)
          (v (pcase (char-before)
               ;; No previous token, so do nothing
