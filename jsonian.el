@@ -289,7 +289,7 @@ This function assumes we are at the start of a node."
                         (and (jsonian--backward-token) (jsonian--backward-token))
                       t)))
                  ((or ?\[ ?\{) 'start)
-                 (_ (user-error "Unexpected character '%c', expected '[', '{' or ','" (char-after)))))))
+                 (_ (jsonian--unexpected-char :backward "one of '[', '{' or ','"))))))
     (unless (eq ret t)
       (goto-char start))
     ret))
@@ -300,7 +300,7 @@ This function assumes we are at the start of a node."
 If the end of a container or the buffer is reached, then `eob'
 and `end' will be send respectively.
 
-If the JSON is invalid then a `user-error' will be signaled."
+If the JSON is invalid then `jsonian--unexpected-char' will be called"
   (pcase (char-after)
     ((or ?\] ?\}) 'end)
     (?, (jsonian--forward-token))
