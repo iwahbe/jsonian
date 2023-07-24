@@ -304,7 +304,7 @@ If the JSON is invalid then a `user-error' will be signaled."
   (pcase (char-after)
     ((or ?\] ?\}) 'end)
     (?, (jsonian--forward-token))
-    (_ (user-error "Unexpected character '%c', expected ']', '}' or ','" (char-after)))))
+    (_ (jsonian--unexpected-char :forward "one of ']', '}' or ','"))))
 
 (defun jsonian--backward-token ()
   "Move `point' to the previous JSON token.
@@ -876,7 +876,7 @@ returned."
   "Traverse backward out of a comment."
   ;; In the body of a comment
   (when-let (start (or (jsonian--enclosing-comment-p (point))
-                     (jsonian--enclosing-comment-p (1- (point)))))
+                       (jsonian--enclosing-comment-p (1- (point)))))
     (goto-char start)))
 
 (defun jsonian--forward-comment ()
@@ -976,7 +976,7 @@ the beginning of a string."
   (save-excursion
     (when (jsonian--string-scan-forward at-beginning)
       (let ((end (point)))
-        (skip-chars-forward "\s\t\n")
+        (jsonian--skip-chars-forward "\s\t\n")
         (and (= (char-after) ?:) end)))))
 
 (defun jsonian--after-key (pos)

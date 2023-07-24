@@ -691,5 +691,18 @@ Specifically, we need to comply with what `completion-boundaries' describes."
      (propertize "{ object }" 'face 'font-lock-type-face)
      "\"value\"" "\"value\""))))
 
+(ert-deftest jsonian-font-lock ()
+  "Assert that syntax highlighting works as expected."
+  (cl-flet ((face (expected-face text)
+              (jsonian--test-against-text
+               text
+               (list (lambda ()
+                       (jsonian-c-mode)
+                       (jsonian--force-lock)
+                       (should (eq (get-text-property (point) 'face)
+                                   expected-face)))))))
+    (face 'font-lock-keyword-face "{ \"fo$o\" // bar\n:null }")
+    (face 'font-lock-string-face  "[ \"\\\"f$oo\" ]")))
+
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here
