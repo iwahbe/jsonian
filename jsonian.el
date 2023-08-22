@@ -933,18 +933,19 @@ If AT-BEGINNING is non-nil, `jsonian--string-scan-forward' assumes
 it is at the beginning of the string.  Otherwise it scans
 backwards to ensure that the end of a string is not escaped."
   (let ((start (if at-beginning (point) (jsonian--pos-in-stringp)))
-        escaped
         done)
     (when start
       (goto-char (1+ start))
       (while (not (or done (eolp)))
         (cond
          ((= (char-after) ?\\)
-          (setq escaped (not escaped)))
-         ((and (= (char-after) ?\") (not escaped))
-          (setq done (point)))
-         (t (setq escaped nil)))
-        (forward-char))
+          (forward-char 2))
+         ((= (char-after) ?\")
+          (setq done (point))
+          (forward-char))
+         ;; We are in the string, and not looking at a significant character. Scan forward
+         ;; (in C) for an interesting character.
+         (t (skip-chars-forward "^\"\\\\\n"))))
       (and done (>= done start) done))))
 
 (defun jsonian--pos-in-stringp ()
