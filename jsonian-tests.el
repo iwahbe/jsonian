@@ -338,6 +338,15 @@ $,    ${
 $]
 " #'jsonian-mode))
 
+(ert-deftest traverse-tokens-compressed ()
+  "Like `traverse-tokens' but for a compressed string."
+  (jsonian--test-traverse-tokens
+   ;; This is the string:
+   ;;
+   ;; {"default":""},"isCmekEnabled":{"type":"boolean"}
+   "${$\"default\"$:$\"\"$}$,$\"isCmekEnabled\"$:${$\"type\"$:$\"boolean\"$}" #'jsonian-mode))
+
+
 (ert-deftest traverse-tokens-with-comments ()
   "Test token traversal with `jsonian-c-mode'.
 

@@ -900,7 +900,6 @@ Must be at the comment boundary."
     (error "`jsonian--forward-string': Expected to start at \", instead found %s"
            (if (char-after) (char-to-string (char-after)) "EOF")))
   (let ((start (point)))
-    (forward-char)
     (when (jsonian--string-scan-forward t)
       (cons start (point)))))
 
