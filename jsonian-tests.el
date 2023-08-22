@@ -326,6 +326,7 @@ This is for non-commented `jsonian-mode' code."
     $false
 $,    ${
         $\"a\"$: $1.3e8$,
+        $\"neg\"$: $-123.456$,
         $\"b\"
             $:
             $2

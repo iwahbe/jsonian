@@ -381,10 +381,10 @@ a token, otherwise nil is returned."
       (?t (jsonian--forward-true))
       (?f (jsonian--forward-false))
       (?n (jsonian--forward-null))
-      ((pred (lambda (c) (and (<= c ?9) (>= c ?0))))
+      ((pred (lambda (c) (or (and (<= c ?9) (>= c ?0)) (eq c ?-))))
        (jsonian--forward-number))
       ;; This is the set of chars that can start a token
-      (_ (jsonian--unexpected-char :forward "one of ':,[]{}\"tfn0123456789'")))
+      (_ (jsonian--unexpected-char :forward "one of ':,[]{}\"tfn0123456789-'")))
     (setq jsonian--last-token-end (point))
     ;; Skip forward over whitespace and comments
     (when (and (= (jsonian--skip-chars-forward "\s\n\t") 0)
