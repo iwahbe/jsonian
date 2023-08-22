@@ -1628,6 +1628,16 @@ If END is non-nil, inspect only before it."
                             (current-column))))
           (and (< 0 indent) indent))))))
 
+(defun jsonian--indentation-spaces ()
+  "The number of spaces per indentation level.
+Either set or inferred."
+  (or
+   jsonian-indentation
+   (if-let* ((indent (jsonian--infer-indentation))
+             (not-zero (> indent 0)))
+       indent
+     jsonian-default-indentation)))
+
 ;;;###autoload
 (defun jsonian-indent-line ()
   "Indent a single line.
@@ -1635,12 +1645,7 @@ The indent is determined by examining the previous line.  The
 number of spaces is determined by `jsonian-indentation' if it is
 set, otherwise it is inferred from the document."
   (interactive)
-  (let* ((indent (or
-                  jsonian-indentation
-                  (if-let* ((indent (jsonian--infer-indentation))
-                            (not-zero (> indent 0)))
-                      indent
-                    jsonian-default-indentation)))
+  (let* ((indent (jsonian--indentation-spaces))
          (indent-level (jsonian--get-indent-level indent))
          (current-indent
           (save-excursion (back-to-indentation) (current-column))))
@@ -1768,12 +1773,7 @@ containing array/object."
   "Indent the region from START to END."
   (interactive "r")
   (save-excursion
-    (let ((indent (or
-                   jsonian-indentation
-                   (if-let* ((indent (jsonian--infer-indentation))
-                             (not-zero (> indent 0)))
-                       indent
-                     jsonian-default-indentation)))
+    (let ((indent (jsonian--indentation-spaces))
           ;; Indent levels of siblings, parent, grand parent, and so on.
           (levels '())
           progress
@@ -1854,6 +1854,117 @@ containing array/object."
             (forward-char)))))
       (progress-reporter-done progress))
     (set-marker end nil nil)))
+
+(defmacro jsonian--huge-edit (start end &rest body)
+  "Evaluate form BODY with optimizations for huge edits.
+Run the change hooks just once like `combine-change-calls'.
+Create undo entries as if the contents from START to END are replaced at once.
+BODY must not modify buffer outside the region (START END), nor move any markers
+out of the region."
+  (declare (debug (form form def-body)) (indent 2))
+  (let ((start-value (make-symbol "start"))
+        (end-value (make-symbol "end")))
+    `(let ((,start-value ,start)
+           (,end-value ,end))
+       ;; WORKAROUND: If buffer-undo-list is nil, combine-change-calls shows
+       ;; unnecessary message.
+       ;; https://git.savannah.gnu.org/cgit/emacs.git/commit/?id=977630b5285809a57e50ff5f38d9c34247b549a7
+       (unless buffer-undo-list
+         (push (point) buffer-undo-list))
+       (,(if (fboundp 'combine-change-calls)
+             'combine-change-calls
+           'combine-after-change-calls)
+        ,start-value
+        ,end-value
+        (jsonian--huge-edit-1 ,start-value ,end-value (lambda () ,@body))))))
+
+(defun jsonian--huge-edit-1 (start end body)
+  "Evaluate a function BODY with optimizations for huge edits.
+Create undo entries as if the contents from START to END are replaced at once.
+BODY must not modify buffer outside the region (START END), nor move any markers
+out of the region."
+  (let ((old-undo-list buffer-undo-list)
+        (undo-inhibit-record-point t)
+        deletion-undo-list)
+    ;; Clear the undo list.
+    (buffer-disable-undo)
+    (buffer-enable-undo)
+    (unwind-protect
+        (atomic-change-group
+          (delete-region start end)
+          ;; This contains restoreing the region and markers inside it.
+          (setq deletion-undo-list buffer-undo-list)
+          (primitive-undo (length deletion-undo-list) deletion-undo-list))
+      (setq buffer-undo-list old-undo-list))
+    (setq start (copy-marker start))
+    (setq end (copy-marker end))
+    (buffer-disable-undo)
+    (unwind-protect
+        (funcall body)
+      ;; Note that setting `buffer-undo-list' enables undo again.
+      (setq buffer-undo-list
+            (append (cons
+                     (cons (jsonian--free-marker start)
+                           (jsonian--free-marker end))
+                     deletion-undo-list)
+                    old-undo-list)))))
+
+(defun jsonian--free-marker (marker)
+  "Make MARKER pointing nowhere and return the old position."
+  (prog1 (marker-position marker)
+    (set-marker marker nil nil)))
+
+;;;###autoload
+(defun jsonian-format-region (start end)
+  "Format the region (START . END)."
+  (interactive "r")
+  (jsonian--huge-edit start end
+    (save-excursion
+      (goto-char start)
+      (jsonian--snap-to-token)
+      (let* ((indent (jsonian--indentation-spaces))
+             (indent-level (jsonian--get-indent-level indent))
+             (undo-inhibit-record-point t)
+             next-token)
+        (while (and
+                (<= (point) end)
+                (jsonian--forward-token))
+          (let ((removed (* -1 (- (point) jsonian--last-token-end))))
+            (delete-char removed)
+            (cl-decf end removed))
+          (setq next-token (point))
+          (cond
+           ;; A space separates : from the next token
+           ;;
+           ;;    "foo": bar
+           ;;          ^space
+           ((eq (char-before jsonian--last-token-end) ?:)
+            (goto-char jsonian--last-token-end)
+            (insert " ")
+            (cl-incf end 1)
+            (goto-char (1+ next-token)))
+           ;; If the second of the abutting tokens is a ",", then we don't make any
+           ;; adjustments.
+           ((memq (char-after) '(?, ?:))
+            (ignore))
+
+           ;; TODO empty arrays and objects should be printed together.
+
+           ;; All other items are separated by a new line, then the appropriate indentation.
+           (t
+            (cond
+             ((memq (char-after) '(?\] ?\}))
+              (cl-decf indent-level))
+             ((memq (char-before jsonian--last-token-end) '(?\[ ?\{))
+              (cl-incf indent-level)))
+
+            (insert "\n")
+            (insert-char ?\s (* indent indent-level))
+            (cl-incf end (+ 1 (* indent indent-level)))
+            (goto-char (+ next-token
+                          1 ;; The newline
+                          (* indent indent-level) ;; The inserted spaces
+                          )))))))))
 
 (defun jsonian-beginning-of-defun (&optional arg)
   "Move to the beginning of the smallest object/array enclosing `POS'.
