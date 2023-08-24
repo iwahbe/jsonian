@@ -1955,17 +1955,16 @@ out of the region."
            ;; All other items are separated by a new line, then the appropriate indentation.
            (t
             (when (memq (char-after) '(?\] ?\}))
-              (cl-decf indent-level))
+              (cl-decf indent-level indent))
             (when (memq (char-before jsonian--last-token-end) '(?\[ ?\{))
-              (cl-incf indent-level))
+              (cl-incf indent-level indent))
             (while (<= (length indent-strings) indent-level)
               (setq indent-strings
                     (append indent-strings
                             (list (concat
                                    "\n"
-                                   (make-string
-                                    (* indent (length indent-strings))
-                                    ?\s))))))
+                                   (make-string (length indent-strings)
+                                                ?\s))))))
             (insert (nth indent-level indent-strings))
             (goto-char next-token))))))))
 
