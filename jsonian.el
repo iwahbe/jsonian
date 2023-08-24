@@ -356,10 +356,16 @@ It will set the value of `jsonian--last-token-end' to
 If `jsonian--forward-token' returned nil, the value of
 `jsonian--last-token-end' is undefined.")
 
-(defun jsonian--forward-token ()
+(defun jsonian--forward-token (&optional stop-at-comments)
   "Move `point' to the next JSON token.
 
 `jsonian--forward-token' will skip over any whitespace it finds.
+
+By default, `jsonian--forward-token' skips over comments when in
+`jsonian-c-mode' or errors on comments in plain `jsonian-mode'.
+If STOP-AT-COMMENTS is non-nil and a comment is encountered in
+`jsonian-c-mode', then comments are treated like tokens by
+`jsonian--forward-token'.
 
 It is assumed that `point' starts at a JSON token.
 
@@ -381,13 +387,18 @@ a token, otherwise nil is returned."
       (?t (jsonian--forward-true))
       (?f (jsonian--forward-false))
       (?n (jsonian--forward-null))
+      ((pred (lambda (c) (and stop-at-comments
+                             (derived-mode-p 'jsonian-c-mode)
+                             (eq c ?/)
+                             (memq (char-after (1+ (point))) '(?/ ?*)))))
+            (forward-comment 1))
       ((pred (lambda (c) (or (and (<= c ?9) (>= c ?0)) (eq c ?-))))
        (jsonian--forward-number))
       ;; This is the set of chars that can start a token
       (_ (jsonian--unexpected-char :forward "one of ':,[]{}\"tfn0123456789-'")))
     (setq jsonian--last-token-end (point))
     ;; Skip forward over whitespace and comments
-    (when (and (= (jsonian--skip-chars-forward "\s\n\t") 0)
+    (when (and (= (jsonian--skip-chars-forward "\s\n\t" stop-at-comments) 0)
                needs-seperator
                (not (memq (char-after) '(nil ?: ?, ?\[ ?\] ?\{ ?\} ?\s ?\t ?\n))))
       (jsonian--unexpected-char :forward "one of ':,[]{}\\s\\t\\n' or EOF")))
@@ -429,12 +440,16 @@ before a node."
             (jsonian--backward-comment)))
     (- start (point))))
 
-(defun jsonian--skip-chars-forward (chars)
-  "Skip CHARS forward in a comment aware way."
+(defun jsonian--skip-chars-forward (chars &optional stop-at-comments)
+  "Skip CHARS forward in a comment aware way.
+
+If STOP-AT-COMMENTS is non-nil, then (comment . traveled) is
+returned when a comment is encountered."
   (let ((start (point)))
     (while (or
             (> (skip-chars-forward chars) 0)
-            (jsonian--forward-comment)))
+            (and (not stop-at-comments)
+                 (jsonian--forward-comment))))
     (- (point) start)))
 
 (defun jsonian--snap-to-token ()
@@ -1934,7 +1949,7 @@ out of the region."
         (set-marker-insertion-type next-token t)
         (while (and
                 (<= (point) end)
-                (jsonian--forward-token))
+                (jsonian--forward-token t))
           (set-marker next-token (point))
           (delete-region jsonian--last-token-end (point))
           (cond
