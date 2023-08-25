@@ -25,9 +25,20 @@ We can use this benchmark to derive how long different parts of the proces take.
 
 - Applying JSON formatting take at most \`jsonian-mode\` - \`prog-mode\`.
 
+### Formatting a large buffer
+
+This tests applying formatting to a very large (42M) JSON file that is compressed to
+remove all whitespace. The formatted files are largely identical.
+
+$(sed 's/Command/Package/g' < bench/format.md)
+
+We see that the built-in \`json-pretty-print-buffer\` takes significantly longer then our
+implementation.
+
 Notes:
 
-- Both \`jsonian\` and \`json-mode\` were byte-compiled for the benchmark.
+- Both \`jsonian\` and \`json-mode\` were byte-compiled for the \`font-lock\` benchmark.
+- Tests were run against $($EMACS --version | head -1).
 - These benchmarks were taken on an Apple M2 Max with 64GB running macOS Ventura.
 EOF
        )

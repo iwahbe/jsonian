@@ -55,13 +55,16 @@ README.md: bench/markdown.md
 	@echo "Splicing bench/markdown.md into README.md"
 	cp $@ $@.backup
 	rg -U '(?s)${BENCHMARK_START}.*${BENCHMARK_END}' \
-	--replace "${BENCHMARK_START}$$(cat bench/markdown.md)\n${BENCHMARK_END}" \
+	--replace '${BENCHMARK_START}'"$$(cat bench/markdown.md)"'${BENCHMARK_END}' \
 	--passthru < $@ > $@.new
 	mv $@.new $@
 
-bench/markdown.md: bench/font-lock.md bench/markdown.sh
-	EXPORT="$@" ./bench/markdown.sh
+bench/markdown.md: bench/format.md bench/font-lock.md bench/markdown.sh
+	EMACS="'${EMACS}'" EXPORT="$@" ./bench/markdown.sh
 
-bench/font-lock.md: ${LARGE_JSON_FILE} jsonian.elc bench/font-lock.sh
-	hyperfine --version
-	EMACS="'${EMACS}'" FILE="${LARGE_JSON_FILE}" EXPORT="$@" ./bench/font-lock.sh
+PHONY: bench-base
+bench-base: ${LARGE_JSON_FILE} jsonian.elc
+	hyperfine --version # Ensure hyperfine is installed
+
+bench/%.md: bench/%.sh bench-base
+	EMACS="'${EMACS}'" FILE="${LARGE_JSON_FILE}" EXPORT="$@" $<
