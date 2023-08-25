@@ -178,40 +178,41 @@ buffer. When the element is selected, jump to that point in the buffer.
 
 Enable `jsonian-mode` for all checkers where `json-mode` is enabled.
 
-## Speed comparison against other modes
+<!--BENCHMARK_START-->
+## Benchmarks
 
-Part of the promise of `jsonian` is that it will be performant on large files. A
-primitive benchmark is included in the `Makefile`. It opens a very very large
-(42M) JSON file, and then forces emacs to fontify it. It finally moves point to
-the end of the file and exits. Here is a comparison of the time it takes to
-fontify the whole buffer on a file:
+The original reason I wrote jsonian is that I needed to read and naviage very large JSON
+files, and Emacs was slowing me down. To keep jsonian fast, I maintain benchmarks of
+jsonian doing real world tasks.
 
-| Package            | Time                                                           | comparison |
-| ------------------ | -------------------------------------------------------------- | ---------- |
-| `fundamental-mode` | 8 seconds                                                      | 0.66       |
-| `prog-mode`        | 8 seconds                                                      | 0.66       |
-| `jsonian`          | 12 seconds                                                     | 1          |
-| `javascript-mode`  | 31 seconds                                                     | 2.58       |
-| `json-mode`        | Fails after 43 seconds with "Stack overflow in regexp matcher" | 3.58       |
+### `font-lock`ing a large buffer
 
-Here is what we can take away from this benchmark:
+This benchmark opens a very large (42M) JSON file, then forces Emacs to fontify it. It
+finally moves point to the end of the file and exits.
 
-- Emacs spends 8 seconds traversing the buffer and parse matching delimiters. We
-  see that from the unfontified time of both `fundamental-mode` and `prog-mode`.
-- `jsonian-mode` adds 4 seconds in fontification. I assume that this time is
-  spent in additional regex searches and function calls.
-- `javascript-mode` spends 19 seconds longer the `jsonian-mode` to achieve the
-  same effect, presumably because the mode is more general. JavaScript is a much
-  more complicated spec then JSON. This will result in more complicated regexes
-  and functions.
-- `json-mode` Spends 12 _additional_ seconds, presumably with an additional set
-  of font lock regexes.
+| Package | Mean [s] | Min [s] | Max [s] | Relative |
+|:---|---:|---:|---:|---:|
+| `fundamental-mode` | 1.351 ± 0.003 | 1.345 | 1.355 | 1.00 |
+| `prog-mode` | 1.437 ± 0.030 | 1.422 | 1.520 | 1.06 ± 0.02 |
+| `jsonian-mode` | 2.349 ± 0.032 | 2.316 | 2.414 | 1.74 ± 0.02 |
+| `json-mode` | 3.838 ± 0.041 | 3.808 | 3.947 | 2.84 ± 0.03 |
+| `javascript-mode` | 13.547 ± 0.086 | 13.498 | 13.789 | 10.03 ± 0.07 |
+
+We can use this benchmark to derive how long different parts of the proces take.
+
+- Fundamental mode is the lower limit. This is the time Emacs spends processing the
+  buffer, parsing sexps, etc.
+
+- We see that `prog-mode` doesn\'t do much more then `fundamental-mode`, which makes
+  sense.
+
+- Applying JSON formatting take at most `jsonian-mode` - `prog-mode`.
 
 Notes:
 
-1. Both `jsonian` and `json-mode` were byte-compiled for this benchmark. Byte
-   compiling `jsonian` shaves 6 seconds off of this benchmark.
-2. These benchmarks were taken on a 2.6 GHz 6-Core Intel i7 running macOS Monterey.
+- Both `jsonian` and `json-mode` were byte-compiled for the benchmark.
+- These benchmarks were taken on an Apple M2 Max with 64GB running macOS Ventura.
+<!--BENCHMARK_END-->
 
 ## Contributing
 
