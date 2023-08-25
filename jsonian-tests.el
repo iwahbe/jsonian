@@ -714,5 +714,57 @@ Specifically, we need to comply with what `completion-boundaries' describes."
     (face 'font-lock-keyword-face "{ \"fo$o\" // bar\n:null }")
     (face 'font-lock-string-face  "[ \"\\\"f$oo\" ]")))
 
+(defun jsonian--format-string (s)
+  "Call `jsonian-format-region' S. To be used in testing."
+  (with-temp-buffer
+    (insert s)
+    (jsonian-format-region (point-min) (point-max))
+    (buffer-string)))
+
+(defun jsonian--test-format (input expected)
+  "Check that calling `jsonian-format-region' on INPUT yields EXPECTED."
+  (let ((inhibit-message t))
+    ;; Validate that we get the expected result.
+    (should (string= (jsonian--format-string input)
+                     expected))
+    ;; Validate that once formatted, calling format again is a no-op.
+    (should (string= (jsonian--format-string expected)
+                     expected))
+    ;; Validate that `jsonian--format-string' matches the behavior of `json-pretty-print'.
+    ;; Because that `json-pretty-print-buffer' defaults to an indentation of 2, we set
+    ;; that for ourselves.
+    (let ((jsonian-indentation 2))
+      (should (string= (jsonian--format-string input)
+                       (with-temp-buffer
+                         (insert input)
+                         (json-pretty-print-buffer)
+                         (buffer-string)))))))
+
+(ert-deftest jsonian-format-region ()
+  "Test `jsonian-format-region'."
+  (jsonian--test-format
+   "[false,null,true,\"abc\",-3.14]"
+   "[
+    false,
+    null,
+    true,
+    \"abc\",
+    -3.14
+]")
+  (jsonian--test-format "[{\"null\":null}, [ [ {
+} ], [     ] ] ]
+" "[
+    {
+        \"null\": null
+    },
+    [
+        [
+            {}
+        ],
+        []
+    ]
+]
+"))
+
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here

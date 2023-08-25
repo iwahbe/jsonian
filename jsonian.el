@@ -1967,7 +1967,9 @@ out of the region."
            ;; adjustments.
            ((memq (char-after) '(?, ?:)))
 
-           ;; TODO empty arrays and objects should be printed together.
+           ;; Empty objects and arrays are formatted as {} and [], respectively.
+           ((and (eq (char-before) ?\[) (eq (char-after) ?\])))
+           ((and (eq (char-before) ?\{) (eq (char-after) ?\})))
 
            ;; All other items are separated by a new line, then the appropriate indentation.
            (t
