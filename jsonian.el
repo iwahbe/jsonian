@@ -1945,11 +1945,13 @@ out of the region."
              ;; Don't allocate a new string each time you add indentation.
              ;;
              ;; In effect, this is where we intern strings on behalf of elisp.
-             (indent-strings '("\n")))
+             (indent-strings '("\n"))
+             (progress (make-progress-reporter "Formatting region..." start (* (- end start) 1.5))))
         (set-marker-insertion-type next-token t)
         (while (and
                 (<= (point) end)
                 (jsonian--forward-token t))
+          (progress-reporter-update progress (point))
           (set-marker next-token (point))
           (delete-region jsonian--last-token-end (point))
           (cond
@@ -1981,7 +1983,8 @@ out of the region."
                                    (make-string (length indent-strings)
                                                 ?\s))))))
             (insert (nth indent-level indent-strings))
-            (goto-char next-token))))))))
+            (goto-char next-token))))
+        (progress-reporter-done progress)))))
 
 (defun jsonian-beginning-of-defun (&optional arg)
   "Move to the beginning of the smallest object/array enclosing `POS'.
