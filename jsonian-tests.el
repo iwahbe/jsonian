@@ -733,12 +733,17 @@ Specifically, we need to comply with what `completion-boundaries' describes."
     ;; Validate that `jsonian--format-string' matches the behavior of `json-pretty-print'.
     ;; Because that `json-pretty-print-buffer' defaults to an indentation of 2, we set
     ;; that for ourselves.
-    (let ((jsonian-indentation 2))
-      (should (string= (jsonian--format-string input)
-                       (with-temp-buffer
-                         (insert input)
-                         (json-pretty-print-buffer)
-                         (buffer-string)))))))
+    ;;
+    ;; Emacs major versions before 28 indent { } as {\n} instead of {}. This makes us
+    ;; unable to verify our formatting against `json-pretty-print' since we target
+    ;; different results.
+    (when (> emacs-major-version 27)
+      (let ((jsonian-indentation 2))
+        (should (string= (jsonian--format-string input)
+                         (with-temp-buffer
+                           (insert input)
+                           (json-pretty-print-buffer)
+                           (buffer-string))))))))
 
 (ert-deftest jsonian-format-region ()
   "Test `jsonian-format-region'."
