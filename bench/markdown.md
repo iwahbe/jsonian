@@ -12,19 +12,19 @@ finally moves point to the end of the file and exits.
 
 | Package | Mean [s] | Min [s] | Max [s] | Relative |
 |:---|---:|---:|---:|---:|
-| `fundamental-mode` | 1.444 ± 0.174 | 1.301 | 1.734 | 1.00 ± 0.12 |
-| `prog-mode` | 1.442 ± 0.039 | 1.402 | 1.488 | 1.00 |
-| `jsonian-mode` | 2.296 ± 0.013 | 2.289 | 2.332 | 1.59 ± 0.04 |
-| `json-mode` | 3.775 ± 0.033 | 3.762 | 3.867 | 2.62 ± 0.07 |
-| `javascript-mode` | 13.599 ± 0.288 | 13.341 | 14.145 | 9.43 ± 0.32 |
+| `fundamental-mode` | 1.357 ± 0.007 | 1.346 | 1.372 | 1.00 |
+| `prog-mode` | 1.431 ± 0.009 | 1.419 | 1.444 | 1.05 ± 0.01 |
+| `jsonian-mode` | 2.315 ± 0.021 | 2.284 | 2.347 | 1.71 ± 0.02 |
+| `json-mode` | 3.846 ± 0.062 | 3.781 | 3.992 | 2.83 ± 0.05 |
+| `javascript-mode` | 13.638 ± 0.099 | 13.439 | 13.816 | 10.05 ± 0.09 |
 
 We can use this benchmark to derive how long different parts of the proces take.
 
 - Fundamental mode is the lower limit. This is the time Emacs spends processing the
   buffer, parsing sexps, etc.
 
-- We see that `prog-mode` doesn\'t do much more then `fundamental-mode`, which makes
-  sense.
+- `prog-mode` doesn\'t do much more then `fundamental-mode`, which makes sense, since it
+  takes about the same amount of time.
 
 - Applying JSON formatting take at most `jsonian-mode` - `prog-mode`.
 
@@ -38,13 +38,13 @@ remove all whitespace. The formatted files are largely identical.
 
 | Package | Mean [s] | Min [s] | Max [s] | Relative |
 |:---|---:|---:|---:|---:|
-| `jsonian-format-region` | 1.709 ± 0.091 | 1.633 | 1.877 | 1.12 ± 0.06 |
-| `jsonian-format-region (minimize)` | 1.524 ± 0.010 | 1.516 | 1.549 | 1.00 |
-| `json-pretty-print-buffer` | 4.582 ± 0.006 | 4.576 | 4.593 | 3.01 ± 0.02 |
-| `json-pretty-print-buffer (minimize)` | 4.440 ± 0.114 | 4.384 | 4.753 | 2.91 ± 0.08 |
+| `jsonian-format-region` | 1.015 ± 0.011 | 1.000 | 1.034 | 1.18 ± 0.02 |
+| `jsonian-format-region (minimize)` | 0.860 ± 0.007 | 0.845 | 0.869 | 1.00 |
+| `json-pretty-print-buffer` | 4.655 ± 0.005 | 4.650 | 4.666 | 5.42 ± 0.04 |
+| `json-pretty-print-buffer (minimize)` | 4.466 ± 0.020 | 4.437 | 4.502 | 5.20 ± 0.05 |
 
-We see that the built-in `json-pretty-print-buffer` takes significantly longer then our
-implementation.
+We see that the built-in `json-pretty-print-buffer` takes significantly longer then
+`jsonian-format-region`, regardless of whether we are pretty printing or minimizing.
 
 Notes:
 
