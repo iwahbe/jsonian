@@ -1548,6 +1548,7 @@ nil is returned if the object at point is not a collection."
     (define-key km (kbd "C-c C-s") #'jsonian-edit-string)
     (define-key km (kbd "C-c C-e") #'jsonian-enclosing-item)
     (define-key km (kbd "C-c C-f") #'jsonian-find)
+    (define-key km (kbd "C-c C-w") #'jsonian-format-region)
     km)
   "The mode-map for `jsonian-mode'.")
 

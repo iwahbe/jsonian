@@ -151,6 +151,39 @@ When you return from the buffer, the string is collapsed back into its escaped f
 
 By default, this command is bound to `C-c C-s`.
 
+#### jsonian-find
+
+Provide an interactive completion interface for selecting an element in the
+buffer. When the element is selected, jump to that point in the buffer.
+
+By default, this command is bound to `C-c C-f`.
+
+### jsonian-format-region
+
+Maximize the JSON contents of the region. This is equivalent to the built-in function
+`json-pretty-print`, but much faster (see "\#\# Benchmarks"). For example:
+
+``` json
+{"key":["simple",null,{"cpx": true},[]]}
+```
+
+Calling `jsonian-format-region` on the above will transform it into:
+
+``` json
+{
+    "key": [
+        "simple",
+        null,
+        {
+            "cpx": true
+        },
+        []
+    ]
+}
+```
+
+By default, this command is bound to `C-c C-w`.
+
 #### jsonian-enclosing-item
 
 Move point to the enclosing node. For example:
@@ -168,11 +201,6 @@ point to the first `{` on the second line. Calling it a final time would move
 the point to the opening `[`.
 
 By default, this function is bound to `C-c C-e`.
-
-#### jsonian-find
-
-Provide an interactive completion interface for selecting an element in the
-buffer. When the element is selected, jump to that point in the buffer.
 
 #### jsonian-enable-flycheck
 
