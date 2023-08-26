@@ -45,39 +45,26 @@ checkdoc:
 	  --eval "(setq byte-compile-error-on-warn t)" \
 	  -f batch-byte-compile $<
 
-bench = time $(EMACS) -Q -nw $(3) \
---eval '(setq enable-local-variables nil)' \
---eval '(setq large-file-warning-threshold nil)' \
---eval '(switch-to-buffer (find-file-literally "$(1)"))' \
---eval $(2) \
---eval '(condition-case err \
-(with-current-buffer (current-buffer) \
-(setq font-lock-major-mode nil) \
-(syntax-ppss-flush-cache -1) \
-(font-lock-set-defaults) \
-(save-excursion \
-(font-lock-fontify-region (point-min) (point-max)))) \
-((debug error) (kill-emacs (error-message-string err))))' \
---eval '(goto-char (point-max))' \
---eval '(kill-emacs)'
-
 LARGE_JSON_FILE := test-assets/large-json-file.json
 ${LARGE_JSON_FILE}:
 	curl 'https://raw.githubusercontent.com/pulumi/pulumi-azure-native/master/provider/cmd/pulumi-resource-azure-native/schema.json' > ${LARGE_JSON_FILE}
 
+BENCHMARK_START=<!--BENCHMARK_START-->
+BENCHMARK_END=<!--BENCHMARK_END-->
+README.md: bench/markdown.md
+	@echo "Splicing bench/markdown.md into README.md"
+	cp $@ $@.backup
+	rg -U '(?s)${BENCHMARK_START}.*${BENCHMARK_END}' \
+	--replace '${BENCHMARK_START}'"$$(cat bench/markdown.md)"'${BENCHMARK_END}' \
+	--passthru < $@ > $@.new
+	mv $@.new $@
+
+bench/markdown.md: bench/format.md bench/font-lock.md bench/markdown.sh
+	EMACS="${EMACS}" EXPORT="$@" ./bench/markdown.sh
+
+PHONY: bench-base
 bench-base: ${LARGE_JSON_FILE} jsonian.elc
+	hyperfine --version # Ensure hyperfine is installed
 
-bench-jsonian: bench-base
-	$(call bench,${LARGE_JSON_FILE}, "(progn (require 'jsonian) (jsonian-mode))", -L .)
-
-bench-json-mode: bench-base
-	$(call bench,${LARGE_JSON_FILE}, "(progn (require 'json-mode) (json-mode))", -L ../json-mode -L ../json-snatcher -L ../json-reformat)
-
-bench-javascript: bench-base
-	$(call bench,${LARGE_JSON_FILE}, "(javascript-mode)",)
-
-bench-fundamental: bench-base
-	$(call bench,${LARGE_JSON_FILE},"(fundamental-mode)",)
-
-bench-prog: bench-base
-	$(call bench,${LARGE_JSON_FILE},"(prog-mode)",)
+bench/%.md: bench/%.sh bench-base
+	EMACS="${EMACS}" FILE="${LARGE_JSON_FILE}" EXPORT="$@" $<
