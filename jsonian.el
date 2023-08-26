@@ -1932,62 +1932,69 @@ out of the region."
     (set-marker marker nil nil)))
 
 ;;;###autoload
-(defun jsonian-format-region (start end)
-  "Format the region (START . END)."
-  (interactive "r")
-  (jsonian--huge-edit start end
-    (let ((end (progn (goto-char end) (point-marker))))
-      (goto-char start)
-      (jsonian--snap-to-token)
-      (let* ((indent (jsonian--indentation-spaces))
-             (indent-level (jsonian--get-indent-level indent))
-             (undo-inhibit-record-point t)
-             (next-token (make-marker))
-             ;; Don't allocate a new string each time you add indentation.
-             ;;
-             ;; In effect, this is where we intern strings on behalf of elisp.
-             (indent-strings '("\n"))
-             (progress (make-progress-reporter "Formatting region..." start (* (- end start) 1.5))))
-        (set-marker-insertion-type next-token t)
-        (while (and
-                (<= (point) end)
-                (jsonian--forward-token t))
-          (progress-reporter-update progress (point))
-          (set-marker next-token (point))
-          (delete-region jsonian--last-token-end (point))
-          (cond
-           ;; A space separates : from the next token
-           ;;
-           ;;    "foo": bar
-           ;;          ^space
-           ((eq (char-before jsonian--last-token-end) ?:)
-            (goto-char jsonian--last-token-end)
-            (insert " ")
-            (goto-char next-token))
-           ;; If the second of the abutting tokens is a ",", then we don't make any
-           ;; adjustments.
-           ((memq (char-after) '(?, ?:)))
+(defun jsonian-format-region (start end &optional minimize)
+  "Format the region (START . END).
 
-           ;; Empty objects and arrays are formatted as {} and [], respectively.
-           ((and (eq (char-before) ?\[) (eq (char-after) ?\])))
-           ((and (eq (char-before) ?\{) (eq (char-after) ?\})))
+If MINIMIZE is non-nil, minimize the region instead of expanding it."
+  (interactive "*r\nP")
+  (let ((current-point (point-marker)))
+    (jsonian--huge-edit start end
+      (let ((end (progn (goto-char end) (point-marker))))
+        (goto-char start)
+        (jsonian--snap-to-token)
+        (let* ((indent (jsonian--indentation-spaces))
+               (indent-level (jsonian--get-indent-level indent))
+               (undo-inhibit-record-point t)
+               (next-token (make-marker))
+               ;; Don't allocate a new string each time you add indentation.
+               ;;
+               ;; In effect, this is where we intern strings on behalf of elisp.
+               (indent-strings '("\n"))
+               (progress (make-progress-reporter "Formatting region..." start (* (- end start) 1.5))))
+          (set-marker-insertion-type next-token t)
+          (while (and
+                  (<= (point) end)
+                  (jsonian--forward-token t))
+            (progress-reporter-update progress (point))
+            ;; Delete the whitespace between the old token and the next token.
+            (set-marker next-token (point))
+            (delete-region jsonian--last-token-end (point))
+            (unless minimize
+              ;; Unless we are minimizing, insert the appropriate whitespace.
+              (cond
+               ;; A space separates : from the next token
+               ;;
+               ;;    "foo": bar
+               ;;          ^space
+               ((eq (char-before jsonian--last-token-end) ?:)
+                (goto-char jsonian--last-token-end)
+                (insert " ")
+                (goto-char next-token))
+               ;; If the second of the abutting tokens is a ",", then we don't make any
+               ;; adjustments.
+               ((memq (char-after) '(?, ?:)))
 
-           ;; All other items are separated by a new line, then the appropriate indentation.
-           (t
-            (when (memq (char-after) '(?\] ?\}))
-              (cl-decf indent-level indent))
-            (when (memq (char-before jsonian--last-token-end) '(?\[ ?\{))
-              (cl-incf indent-level indent))
-            (while (<= (length indent-strings) indent-level)
-              (setq indent-strings
-                    (append indent-strings
-                            (list (concat
-                                   "\n"
-                                   (make-string (length indent-strings)
-                                                ?\s))))))
-            (insert (nth indent-level indent-strings))
-            (goto-char next-token))))
-        (progress-reporter-done progress)))))
+               ;; Empty objects and arrays are formatted as {} and [], respectively.
+               ((and (eq (char-before) ?\[) (eq (char-after) ?\])))
+               ((and (eq (char-before) ?\{) (eq (char-after) ?\})))
+
+               ;; All other items are separated by a new line, then the appropriate indentation.
+               (t
+                (when (memq (char-after) '(?\] ?\}))
+                  (cl-decf indent-level indent))
+                (when (memq (char-before jsonian--last-token-end) '(?\[ ?\{))
+                  (cl-incf indent-level indent))
+                (while (<= (length indent-strings) indent-level)
+                  (setq indent-strings
+                        (append indent-strings
+                                (list (concat
+                                       "\n"
+                                       (make-string (length indent-strings)
+                                                    ?\s))))))
+                (insert (nth indent-level indent-strings))
+                (goto-char next-token)))))
+          (progress-reporter-done progress))))
+    (goto-char current-point)))
 
 (defun jsonian-beginning-of-defun (&optional arg)
   "Move to the beginning of the smallest object/array enclosing `POS'.

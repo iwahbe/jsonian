@@ -20,8 +20,8 @@ We can use this benchmark to derive how long different parts of the proces take.
 - Fundamental mode is the lower limit. This is the time Emacs spends processing the
   buffer, parsing sexps, etc.
 
-- We see that \`prog-mode\` doesn\'t do much more then \`fundamental-mode\`, which makes
-  sense.
+- \`prog-mode\` doesn\'t do much more then \`fundamental-mode\`, which makes sense, since it
+  takes about the same amount of time.
 
 - Applying JSON formatting take at most \`jsonian-mode\` - \`prog-mode\`.
 
@@ -35,8 +35,8 @@ remove all whitespace. The formatted files are largely identical.
 
 $(sed 's/Command/Package/g' < bench/format.md)
 
-We see that the built-in \`json-pretty-print-buffer\` takes significantly longer then our
-implementation.
+We see that the built-in \`json-pretty-print-buffer\` takes significantly longer then
+\`jsonian-format-region\`, regardless of whether we are pretty printing or minimizing.
 
 Notes:
 
