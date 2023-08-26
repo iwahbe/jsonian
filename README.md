@@ -208,6 +208,9 @@ We can use this benchmark to derive how long different parts of the proces take.
 
 - Applying JSON formatting take at most `jsonian-mode` - `prog-mode`.
 
+- Parsing a javascript file is much more complicated (and thus expensive) then parsing a
+  JSON file.
+
 ### Formatting a large buffer
 
 This tests applying formatting to a very large (42M) JSON file that is compressed to

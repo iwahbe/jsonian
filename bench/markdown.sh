@@ -25,6 +25,9 @@ We can use this benchmark to derive how long different parts of the proces take.
 
 - Applying JSON formatting take at most \`jsonian-mode\` - \`prog-mode\`.
 
+- Parsing a javascript file is much more complicated (and thus expensive) then parsing a
+  JSON file.
+
 ### Formatting a large buffer
 
 This tests applying formatting to a very large (42M) JSON file that is compressed to
@@ -37,9 +40,9 @@ implementation.
 
 Notes:
 
-- Both \`jsonian\` and \`json-mode\` were byte-compiled for the \`font-lock\` benchmark.
-- Tests were run against $($EMACS --version | head -1).
-- These benchmarks were taken on an Apple M2 Max with 64GB running macOS Ventura.
+1. Both \`jsonian\` and \`json-mode\` were byte-compiled for the \`font-lock\` benchmark.
+1. Tests were run against $($EMACS --version | head -1).
+1. These benchmarks were taken on an Apple M2 Max with 64GB running macOS Ventura.
 EOF
        )
 

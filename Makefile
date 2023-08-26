@@ -60,11 +60,11 @@ README.md: bench/markdown.md
 	mv $@.new $@
 
 bench/markdown.md: bench/format.md bench/font-lock.md bench/markdown.sh
-	EMACS="'${EMACS}'" EXPORT="$@" ./bench/markdown.sh
+	EMACS="${EMACS}" EXPORT="$@" ./bench/markdown.sh
 
 PHONY: bench-base
 bench-base: ${LARGE_JSON_FILE} jsonian.elc
 	hyperfine --version # Ensure hyperfine is installed
 
 bench/%.md: bench/%.sh bench-base
-	EMACS="'${EMACS}'" FILE="${LARGE_JSON_FILE}" EXPORT="$@" $<
+	EMACS="${EMACS}" FILE="${LARGE_JSON_FILE}" EXPORT="$@" $<
