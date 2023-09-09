@@ -1977,13 +1977,13 @@ If MINIMIZE is non-nil, minimize the region instead of expanding it."
                (progress (make-progress-reporter "Formatting region..." start (* (- end start) 1.5))))
           (set-marker-insertion-type next-token t)
           (while (and
-                  (<= (point) end)
+                  (< (point) end)
                   (jsonian--forward-token t))
             (progress-reporter-update progress (point))
             ;; Delete the whitespace between the old token and the next token.
             (set-marker next-token (point))
             (delete-region jsonian--last-token-end (point))
-            (unless minimize
+            (unless (or minimize (>= (point) end))
               ;; Unless we are minimizing, insert the appropriate whitespace.
               (cond
                ;; A space separates : from the next token
