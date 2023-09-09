@@ -1939,12 +1939,16 @@ If MINIMIZE is non-nil, minimize the region instead of expanding it."
   (interactive "*r\nP")
   (let ((current-point (point-marker)))
     (jsonian--huge-edit start end
-      (let ((end (progn (goto-char end) (point-marker))))
+      ;; Both `inhibit-modification-hooks' and `undo-inhibit-record-point' must be inside
+      ;; `jsonian--huge-edit' to allow `jsonian--huge-edit' to handle changes
+      ;; appropriately.
+      (let ((inhibit-modification-hooks t)
+            (undo-inhibit-record-point t)
+            (end (progn (goto-char end) (point-marker))))
         (goto-char start)
         (jsonian--snap-to-token)
         (let* ((indent (jsonian--indentation-spaces))
                (indent-level (jsonian--get-indent-level indent))
-               (undo-inhibit-record-point t)
                (next-token (make-marker))
                ;; Don't allocate a new string each time you add indentation.
                ;;
