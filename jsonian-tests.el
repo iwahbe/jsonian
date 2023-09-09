@@ -448,6 +448,13 @@ $]
     (test "[ true$ |, false ]")
     (test "[ |tru$e , false ]")
     (test "[ true |$, false ]")
+
+    ;; Test that we snap correctly when other parts of the buffer are not valid json
+    (test "`$|{null}`")
+    (test " =$ |[1, 2] =")
+
+
+    ;; Test in `jsonian-c-mode'.
     (w-comments "[ true /* comment$ */ |]")
     (w-comments "[
 /*false*/
