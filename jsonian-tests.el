@@ -448,6 +448,13 @@ $]
     (test "[ true$ |, false ]")
     (test "[ |tru$e , false ]")
     (test "[ true |$, false ]")
+
+    ;; Test that we snap correctly when other parts of the buffer are not valid json
+    (test "`$|{null}`")
+    (test " =$ |[1, 2] =")
+
+
+    ;; Test in `jsonian-c-mode'.
     (w-comments "[ true /* comment$ */ |]")
     (w-comments "[
 /*false*/
@@ -714,21 +721,34 @@ Specifically, we need to comply with what `completion-boundaries' describes."
     (face 'font-lock-keyword-face "{ \"fo$o\" // bar\n:null }")
     (face 'font-lock-string-face  "[ \"\\\"f$oo\" ]")))
 
-(defun jsonian--format-string (s)
-  "Call `jsonian-format-region' S. To be used in testing."
+(defun jsonian--format-string (s start end)
+  "Call `jsonian-format-region' S. To be used in testing.
+
+START and END provide the bound for the region.  They may be
+empty, in which case the whole buffer is formatted.
+
+START is the starting point for the region.  END is a cons cell
+where (car END) is the end of the region pre-formatting and (cdr
+END) is the end of the region post-formatting."
   (with-temp-buffer
     (insert s)
-    (jsonian-format-region (point-min) (point-max))
+    (apply #'jsonian-format-region
+           (if start
+               (list start end)
+             (list (point-min) (point-max))))
     (buffer-string)))
 
-(defun jsonian--test-format (input expected)
-  "Check that calling `jsonian-format-region' on INPUT yields EXPECTED."
+(defun jsonian--test-format (input expected &optional start end)
+  "Check that calling `jsonian-format-region' on INPUT yields EXPECTED.
+If START and END are provided, they are set as point and mark."
+  (should (and (not (xor start end))))
+  (when start (should (consp end)))
   (let ((inhibit-message t))
     ;; Validate that we get the expected result.
-    (should (string= (jsonian--format-string input)
+    (should (string= (jsonian--format-string input start (car-safe end))
                      expected))
     ;; Validate that once formatted, calling format again is a no-op.
-    (should (string= (jsonian--format-string expected)
+    (should (string= (jsonian--format-string expected start (cdr-safe end))
                      expected))
     ;; Validate that `jsonian--format-string' matches the behavior of `json-pretty-print'.
     ;; Because that `json-pretty-print-buffer' defaults to an indentation of 2, we set
@@ -739,10 +759,12 @@ Specifically, we need to comply with what `completion-boundaries' describes."
     ;; different results.
     (when (> emacs-major-version 27)
       (let ((jsonian-indentation 2))
-        (should (string= (jsonian--format-string input)
+        (should (string= (jsonian--format-string input start (car-safe end))
                          (with-temp-buffer
                            (insert input)
-                           (json-pretty-print-buffer)
+                           (if start
+                               (json-pretty-print start (car-safe end))
+                             (json-pretty-print-buffer))
                            (buffer-string))))))))
 
 (ert-deftest jsonian-format-region ()
@@ -769,7 +791,12 @@ Specifically, we need to comply with what `completion-boundaries' describes."
         []
     ]
 ]
-"))
+")
+  (jsonian--test-format
+   "`{\"small\": true}`"
+   "`{
+    \"small\": true
+}`" 2 '(17 . 23)))
 
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here

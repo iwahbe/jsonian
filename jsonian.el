@@ -489,45 +489,49 @@ we instead move so that `char-after' gives the ?\" that begins
   (let* ((center (point))
          left-end
          (left
-          ;; Find the left most valid starting token
-          (if-let (start (jsonian--pos-in-stringp))
-              start
-            (when-let (start (jsonian--enclosing-comment-p (point)))
-              (goto-char start))
+          (jsonian--is-token
+           ;; Find the left most valid starting token
+           (if-let (start (jsonian--pos-in-stringp))
+               start
+             (when-let (start (jsonian--enclosing-comment-p (point)))
+               (goto-char start))
 
-            (jsonian--skip-chars-backward "\s\t\n")
-            (unless (bobp)
-              (pcase (char-before)
-                ((or ?: ?, ?\{ ?\} ?\[ ?\]) (1- (point)))
-                (?\" (jsonian--backward-string)
-                     (point))
-                (_ (while (not (or (bobp)
-                                   (memq (char-before) '(?: ?, ?\s ?\t ?\n ?\{ ?\} ?\[ ?\]))))
-                     (backward-char))
-                   (unless (bobp)
-                     (point)))))))
-         (right (cond
-                 ;; If left=center, there is no point in trying to calculate `right',
-                 ;; since it cannot be better then left.
-                 ((eq left center) nil)
-                 (left
-                  ;; If we have a left token, we can just traverse forward from the left
-                  ;; token to get the right token.
-                  (goto-char left)
-                  (when (and (jsonian--forward-token)
-                             (>= center (setq left-end jsonian--last-token-end)))
-                    ;; If center is within the node found by left, we take that
-                    ;; token regardless of distance. This is necessary to ensure
-                    ;; idenpotency for tightly packed tokens.
-                    (point)))
-                 (t
-                  ;; We have no left token, so we need to parse to the right token.
-                  (goto-char center)
-                  (when-let (start (jsonian--enclosing-comment-p (point)))
-                    (goto-char start))
-                  (jsonian--skip-chars-forward "\s\t\n")
-                  (unless (eobp)
-                    (point))))))
+             (jsonian--skip-chars-backward "\s\t\n")
+             (unless (bobp)
+               (pcase (char-before)
+                 ((or ?: ?, ?\{ ?\} ?\[ ?\]) (1- (point)))
+                 (?\" (jsonian--backward-string)
+                      (point))
+                 (_ (while (not (or (bobp)
+                                    (memq (char-before) '(?: ?, ?\s ?\t ?\n ?\{ ?\} ?\[ ?\]))))
+                      (backward-char))
+                    (unless (bobp)
+                      (point))))))))
+         (right
+          (jsonian--is-token
+           (cond
+            ;; If left=center, there is no point in trying to calculate `right',
+            ;; since it cannot be better then left.
+            ((eq left center) nil)
+            (left
+             ;; If we have a left token, we can just traverse forward from the left
+             ;; token to get the right token.
+             (goto-char left)
+             (when (and (jsonian--forward-token)
+                        (>= center (setq left-end jsonian--last-token-end)))
+               ;; If center is within the node found by left, we take that
+               ;; token regardless of distance. This is necessary to ensure
+               ;; idenpotency for tightly packed tokens.
+               (point)))
+            (t
+             ;; We have no left token, so we need to parse to the right token.
+             (goto-char center)
+             (when-let (start (jsonian--enclosing-comment-p (point)))
+               (goto-char start))
+             (jsonian--skip-chars-forward "\s\t\n")
+             (unless (eobp)
+               (point)))))))
+    ;; Move `point' to the nearest token start: `left' or `right'.
     (goto-char
      (or
       (if (and left right)
@@ -553,6 +557,22 @@ we instead move so that `char-after' gives the ?\" that begins
                 right))))
         (or left right))
       center))))
+
+(defun jsonian--is-token (point)
+  "Return POINT if it is the start of a token.
+Otherwise nil is returned."
+  (when point
+    (condition-case nil
+        (save-excursion
+          (goto-char point)
+          ;; If not at a token, then `jsonian--forward-token' will `signal'.
+          (jsonian--forward-token)
+          ;; If we didn't signal, return `point'.
+          ;;
+          ;; This would be better expressed as a (:success t) case, but that was
+          ;; introduced in Emacs 28.
+          point)
+      (user-error nil))))
 
 (defun jsonian--display-path (path &optional pretty)
   "Convert the reconstructed JSON path PATH to a string.
@@ -1957,13 +1977,13 @@ If MINIMIZE is non-nil, minimize the region instead of expanding it."
                (progress (make-progress-reporter "Formatting region..." start (* (- end start) 1.5))))
           (set-marker-insertion-type next-token t)
           (while (and
-                  (<= (point) end)
+                  (< (point) end)
                   (jsonian--forward-token t))
             (progress-reporter-update progress (point))
             ;; Delete the whitespace between the old token and the next token.
             (set-marker next-token (point))
             (delete-region jsonian--last-token-end (point))
-            (unless minimize
+            (unless (or minimize (>= (point) end))
               ;; Unless we are minimizing, insert the appropriate whitespace.
               (cond
                ;; A space separates : from the next token
