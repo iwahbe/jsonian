@@ -104,7 +104,7 @@ function `jsonian-enable-flycheck` which adds `jsonian-mode` to all checkers tha
 
 ### Functions
 
-#### jsonian-path (&optional POS BUFFER)
+#### jsonian-path
 
 Return the JSON path (as a list) of POINT in BUFFER.
 It is assumed that BUFFER is entirely JSON and that the json is
@@ -134,6 +134,18 @@ b. leveraging C code whenever possible.
 
 By default, this command is bound to `C-c C-p`.
 
+##### Customization
+
+`jsonian-find` needs to filter it's results. By default, it filters by prefix. You can
+customize the prefix function by setting
+`jsonian-find-filter-fn`. [Orderless](https://github.com/oantolin/orderless) provides an
+excellent fuzzy search implementation, which you can use via:
+
+``` emacs-lisp
+(with-eval-after-load 'orderless
+    (setq jsonian-find-filter-fn #'orderless-filter))
+```
+
 #### jsonian-edit-string
 
 Edit the string at point in another buffer. The string is expanded when being edited and
@@ -158,7 +170,7 @@ buffer. When the element is selected, jump to that point in the buffer.
 
 By default, this command is bound to `C-c C-f`.
 
-### jsonian-format-region
+#### jsonian-format-region
 
 Maximize the JSON contents of the region. This is equivalent to the built-in function
 `json-pretty-print`, but much faster (see "\#\# Benchmarks"). For example:

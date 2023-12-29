@@ -71,6 +71,11 @@ nil means that `jsonian-mode' will infer the correct indentation."
   :type 'integer
   :group 'jsonian)
 
+(defcustom jsonian-find-filter-fn #'jsonian--filter-prefix
+  "The function used to filter `jsonian-find' results."
+  :type 'func
+  :group 'jsonian)
+
 (defgroup jsonian-c nil
   "A major mode for editing JSON with comments."
   :prefix "jsonian-c-" :group 'jsonian)
@@ -1372,6 +1377,10 @@ CACHE is the value of `jsonian--cache' for the buffer being completed against."
                  (or (and node (jsonian--cached-node-preview node)) ""))))
             paths)))
 
+(defun jsonian--filter-prefix (prefix paths)
+  "Filter out entries in PATHS that do not start with PREFIX."
+  (seq-filter (apply-partially #'string-prefix-p prefix) paths))
+
 (defun jsonian--completing-sort (prefix paths)
   "The completing sort function for `jsonian--find-completion'.
 PREFIX is the string to compare against.
@@ -1379,7 +1388,7 @@ PATHS is the list of returned paths."
   (if-let* ((segment (car-safe (last (jsonian--parse-path prefix))))
             (prefix (jsonian--display-segment-end segment)))
       (sort
-       (seq-filter (apply-partially #'string-prefix-p prefix) paths)
+       (funcall jsonian-find-filter-fn prefix paths)
        (if (seq-every-p (apply-partially #'string-match-p "^[0-9]+\]$") paths)
            ;; We are in an array, and indexes are numbers like "42]". We should sort them low to high.
            (lambda (x y) (< (string-to-number x) (string-to-number y)))
