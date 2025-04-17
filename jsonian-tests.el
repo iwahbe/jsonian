@@ -832,5 +832,31 @@ If START and END are provided, they are set as point and mark."
       (should (equal b (current-buffer)))
       (should (string= (buffer-string) json-string)))))
 
+(ert-deftest jsonian-edit-string-hook ()
+  "Test `jsonian-edit-string' moves to a new buffer and then returns correctly."
+  (with-temp-buffer
+    (let* ((json-string "{\"key\": \"some complex value\\nwith new lines\"}")
+          (b (current-buffer))
+          (edit-buffer nil)
+          (hook-fn (lambda ()
+                     (should (string= "some complex value\nwith new lines" (buffer-string)))
+                     (should (not (equal (current-buffer) b)))
+                     (setq edit-buffer (current-buffer))
+                     (text-mode))))
+      (add-hook 'jsonian-edit-string-hook hook-fn)
+      (jsonian-mode)
+      (insert json-string)
+      (goto-char 10) ;; Move the point into the "complex" string
+      (jsonian-edit-string)
+      (should (eq major-mode 'text-mode))
+      (should (equal (current-buffer) edit-buffer))
+      (delete-region (point-min) (point-max))
+      (insert "some new value")
+      (jsonian-edit-mode-return)
+      (should (equal b (current-buffer)))
+      (should (string= (buffer-string) "{\"key\": \"some new value\"}"))
+      (should (eq major-mode 'jsonian-mode))
+      (remove-hook 'jsonian-edit-string-hook hook-fn))))
+
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here
