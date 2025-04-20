@@ -1084,6 +1084,11 @@ POS must be a valid node location."
 (defvar-local jsonian-edit-return-var nil
   "Information necessary to jump back from `jsonian--edit-mode'.")
 
+(defvar jsonian-edit-string-hook nil
+  "A normal hook run when `jsonian-edit-string' is called.
+
+It is run in the context of the edit buffer.")
+
 (defun jsonian-edit-string ()
   "Edit the string at point in another buffer."
   (interactive)
@@ -1100,6 +1105,7 @@ POS must be a valid node location."
         (insert text)
         (jsonian--unintern-special-chars (current-buffer))
         (goto-char (point-min))
+        (run-hooks 'jsonian-edit-string-hook)
         (setq-local jsonian-edit-return-var (make-jsonian--edit-return
                                              :match match
                                              :back-buffer cbuffer
