@@ -1182,7 +1182,12 @@ This means replacing '\\n' with '\n' and '\\t' with '\t'."
     (if kill-window
         (kill-buffer-and-window)
       (kill-current-buffer))
-    (select-window (get-buffer-window back-buffer))
+    ;; Go back to the display window, if it exists.
+    ;;
+    ;; It should exist as long as Emacs is running with UI.
+    (if-let (w (get-buffer-window back-buffer))
+        (select-window w)
+      (switch-to-buffer back-buffer))
     (read-only-mode -1)))
 
 (define-minor-mode jsonian--edit-mode

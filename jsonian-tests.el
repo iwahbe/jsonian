@@ -1,4 +1,4 @@
-;;; jsonian-tests.el --- Tests for jsonian.el -*- lexical-bindings: t; -*-
+;;; jsonian-tests.el --- Tests for jsonian.el -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2022 Ian Wahbe
 
@@ -212,7 +212,7 @@ We test that all lines are unchanged"
                              (should (string= (buffer-string) file-contents)))))
     (with-file-and-point "path1.json" (point-min)
                          (let ((jsonian-indentation 4))
-                           (dotimes (l (count-lines (point-min) (point-max)))
+                           (dotimes (_ (count-lines (point-min) (point-max)))
                              (jsonian-indent-line)
                              (forward-line))
                            (should (string= "{
@@ -797,6 +797,40 @@ If START and END are provided, they are set as point and mark."
    "`{
     \"small\": true
 }`" 2 '(17 . 23)))
+
+(ert-deftest jsonian-edit-string-return ()
+  "Test `jsonian-edit-string' moves to a new buffer and then returns correctly."
+  (with-temp-buffer
+    (let ((json-string "{\"key\": \"some complex value\\nwith new lines\"}")
+          (b (current-buffer)))
+      (jsonian-mode)
+      (insert json-string)
+      (goto-char 10) ;; Move the point into the "complex" string
+      (jsonian-edit-string)
+      (should (string= "some complex value\nwith new lines" (buffer-string)))
+      (should (not (equal b (current-buffer))))
+      (delete-region (point-min) (point-max))
+      (insert "the new value,\tstill with special characters")
+      (jsonian-edit-mode-return)
+      (should (equal b (current-buffer)))
+      (should (string= (buffer-string) "{\"key\": \"the new value,\\tstill with special characters\"}")))))
+
+(ert-deftest jsonian-edit-string-cancel ()
+  "Test `jsonian-edit-string' moves to a new buffer and then cancels correctly."
+  (with-temp-buffer
+    (let ((json-string "{\"key\": \"some complex value\\nwith new lines\"}")
+          (b (current-buffer)))
+      (jsonian-mode)
+      (insert json-string)
+      (goto-char 10) ;; Move the point into the "complex" string
+      (jsonian-edit-string)
+      (should (string= "some complex value\nwith new lines" (buffer-string)))
+      (should (not (equal b (current-buffer))))
+      (delete-region (point-min) (point-max))
+      (insert "This value should not show up in the original buffer")
+      (jsonian-edit-mode-cancel)
+      (should (equal b (current-buffer)))
+      (should (string= (buffer-string) json-string)))))
 
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here
