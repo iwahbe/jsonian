@@ -1136,9 +1136,12 @@ BUFFER defaults to the current buffer."
 
 (defun jsonian--intern-special-chars (buffer)
   "Translates whitespace operators to their ansi equivalents in BUFFER.
-This means replacing '\n' with '\\n', '\t' with '\\t'."
+This means replacing '\n' with '\\n', '\t' with '\\t', and escaping quotes and backslashes"
   (with-current-buffer buffer
     (save-excursion
+      (goto-char (point-min))
+      (while (search-forward "\\" nil t)
+        (replace-match "\\\\\\\\"))
       (goto-char (point-min))
       (while (search-forward "\n" nil t)
         (replace-match "\\\\n"))
@@ -1151,18 +1154,18 @@ This means replacing '\n' with '\\n', '\t' with '\\t'."
 
 (defun jsonian--unintern-special-chars (buffer)
   "Translate special characters to their unescaped equivalents in BUFFER.
-This means replacing '\\n' with '\n' and '\\t' with '\t'."
+This means replacing '\\n' with '\n' and '\\t' with '\t' and unescaping escaped characters."
   (with-current-buffer buffer
     (save-excursion
       (goto-char (point-min))
-      (while (search-forward "\\n" nil t)
-        (replace-match "\n"))
-      (goto-char (point-min))
-      (while (search-forward "\\t" nil t)
-        (replace-match "\t"))
-      (goto-char (point-min))
-      (while (search-forward "\\\"" nil t)
-        (replace-match "\"")))))
+      (while (search-forward "\\" nil t)
+        (let ((c (char-after)))
+          (delete-region (1- (point)) (1+ (point)))
+          (insert
+           (cond
+            ((eql c ?t) ?\t)
+            ((eql c ?n) ?\n)
+            (t c))))))))
 
 (defun jsonian-edit-mode-return ()
   "Jump back from `json-edit-string', actualizing the change made."
