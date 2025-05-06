@@ -858,5 +858,24 @@ If START and END are provided, they are set as point and mark."
       (should (eq major-mode 'jsonian-mode))
       (remove-hook 'jsonian-edit-string-hook hook-fn))))
 
+(ert-deftest jsonian-special-chars ()
+  "Test `jsonian--intern-special-chars' and `jsonian--unintern-special-chars' translate properly"
+  (with-temp-buffer
+    (mapc (lambda (testcase)
+            (let ((raw (car testcase))
+                  (escaped (cdr testcase)))
+              (insert escaped)
+              (jsonian--unintern-special-chars (current-buffer))
+              (should (equal (buffer-string) raw))
+              (jsonian--intern-special-chars (current-buffer))
+              (should (equal (buffer-string) escaped))
+              (delete-region (point-min) (point-max))))
+          '(("\t" . "\\t")
+            ("\n" . "\\n")
+            ("\"" . "\\\"")
+            ("\\" . "\\\\")
+            ("\\\n" . "\\\\\\n"))))
+  nil)
+
 (provide 'jsonian-tests)
 ;;; jsonian-tests.el ends here
