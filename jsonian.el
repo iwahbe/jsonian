@@ -64,11 +64,13 @@ It will be removed in a future version of jsonian."
   "The number of spaces each increase in indentation level indicates.
 nil means that `jsonian-mode' will infer the correct indentation."
   :type '(choice (const nil) integer)
+  :safe (lambda (x) (or (null x) (integerp x)))
   :group 'jsonian)
 
 (defcustom jsonian-default-indentation 4
   "The default number of spaces per indent for when it cannot be inferred."
   :type 'integer
+  :safe #'integerp
   :group 'jsonian)
 
 (defcustom jsonian-find-filter-fn #'jsonian--filter-prefix
